@@ -1,0 +1,5 @@
+{
+  "name": "SquadAssembler",
+  "description": "A tactical team generator for competitive gaming. Supports custom squad sizes and game presets like Apex, LoL, and Valorant with a strict, high-contrast, no-gradient UI.",
+  "requestFramePermissions": []
+}
