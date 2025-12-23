@@ -33,8 +33,13 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
   };
 
   const item = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 }
+    hidden: { opacity: 0, y: 20, scale: 0.9 },
+    show: { 
+      opacity: 1, 
+      y: 0, 
+      scale: 1,
+      transition: { type: "spring", stiffness: 300, damping: 24 }
+    }
   };
 
   // Map text color to background color for badges
@@ -71,10 +76,18 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
         <motion.div
           key={team.id}
           variants={item}
-          className="bg-gray-50 border border-gray-100 p-5 rounded-2xl flex flex-col hover:shadow-lg hover:shadow-gray-200/50 hover:bg-white transition-all duration-300 group"
+          className="bg-gray-50 border border-gray-100 p-5 rounded-2xl flex flex-col hover:shadow-lg hover:shadow-gray-200/50 hover:bg-white transition-all duration-300 group relative overflow-hidden"
         >
+          {/* Subtle Flash Animation on Entry */}
+          <motion.div 
+            initial={{ opacity: 0.5, left: "-100%" }}
+            animate={{ opacity: 0, left: "100%" }}
+            transition={{ duration: 1, ease: "easeInOut", delay: 0.2 }}
+            className="absolute top-0 w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none z-10 skew-x-12"
+          />
+
           {/* Header */}
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex justify-between items-start mb-4 relative z-0">
              <span className={`text-xs font-black tracking-widest uppercase px-2 py-1 rounded-md ${badgeClass}`}>
                Team {team.id}
              </span>
@@ -119,7 +132,7 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
           </div>
 
           {/* Members */}
-          <ul className="space-y-2 flex-grow">
+          <ul className="space-y-2 flex-grow relative z-0">
             {team.members.map((member, mIdx) => (
               <li key={mIdx} className="flex items-center gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-gray-300 group-hover:bg-indigo-400 transition-colors" />

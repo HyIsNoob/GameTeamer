@@ -12,7 +12,7 @@ export function shuffleArray<T>(array: T[]): T[] {
 }
 
 /**
- * Distributes players into teams as evenly as possible.
+ * Distributes players into teams based on max players per team.
  * 
  * Logic:
  * 1. Calculate minimum number of teams needed (Total / MaxSize).
@@ -26,11 +26,6 @@ export function shuffleArray<T>(array: T[]): T[] {
 export function distributeBalanced<T>(players: T[], maxPerTeam: number): T[][] {
   if (players.length === 0) return [];
 
-  // If maxPerTeam is greater than total players, we just need 1 team
-  // But if the user wants to split, we rely on the math.
-  // Actually, usually if players < maxPerTeam, it's just 1 team.
-  // But strictly following the "limit" logic:
-  
   // Calculate N teams
   const numTeams = Math.ceil(players.length / maxPerTeam);
   
@@ -42,5 +37,23 @@ export function distributeBalanced<T>(players: T[], maxPerTeam: number): T[][] {
     teams[index % numTeams].push(player);
   });
   
+  return teams;
+}
+
+/**
+ * Distributes players into a fixed number of teams.
+ * 
+ * Logic:
+ * Round-robin distribution into N buckets.
+ */
+export function distributeIntoCount<T>(players: T[], teamCount: number): T[][] {
+  if (players.length === 0 || teamCount < 1) return [];
+
+  const teams: T[][] = Array.from({ length: teamCount }, () => []);
+  
+  players.forEach((player, index) => {
+    teams[index % teamCount].push(player);
+  });
+
   return teams;
 }

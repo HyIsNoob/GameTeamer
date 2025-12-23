@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { GAMES, GamePreset } from './constants';
-import { shuffleArray, distributeBalanced } from './utils/teamLogic';
+import { shuffleArray, distributeBalanced, distributeIntoCount } from './utils/teamLogic';
 import PlayerList from './components/PlayerList';
 import TeamDisplay from './components/TeamDisplay';
 import GameSelector from './components/GameSelector';
@@ -10,6 +10,14 @@ interface TeamResult {
   id: number;
   members: string[];
 }
+
+type GenerationMode = 'MAX_SIZE' | 'FIXED_COUNT';
+
+const SEPARATORS = {
+  AUTO: { label: 'Auto (Spaces, Commas)', regex: /[\s,\n|]+/ },
+  NEWLINE: { label: 'New Lines Only', regex: /[\n]+/ },
+  COMMA: { label: 'Commas Only', regex: /[,]+/ },
+};
 
 const App: React.FC = () => {
   // --- State ---
@@ -23,8 +31,11 @@ const App: React.FC = () => {
     return GAMES.find(g => g.id === savedId) || GAMES[0];
   });
 
-  // Initialize maxPerTeam based on the (potentially loaded) selectedGame
+  // Configuration State
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('MAX_SIZE');
   const [maxPerTeam, setMaxPerTeam] = useState<number>(selectedGame.teamSize);
+  const [fixedTeamCount, setFixedTeamCount] = useState<number>(2);
+  const [separatorKey, setSeparatorKey] = useState<keyof typeof SEPARATORS>('AUTO');
   
   const [generatedTeams, setGeneratedTeams] = useState<TeamResult[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -35,6 +46,7 @@ const App: React.FC = () => {
 
   // --- Effects ---
   useEffect(() => {
+    // When game changes, default to its max team size, but don't override mode immediately unless it makes sense
     setMaxPerTeam(selectedGame.teamSize);
     localStorage.setItem('squadAssembler_gameId', selectedGame.id);
   }, [selectedGame]);
@@ -45,16 +57,12 @@ const App: React.FC = () => {
     if (e) e.preventDefault();
     const trimmed = inputValue.trim();
     
-    // Regex for splitting: space, comma, newline, or pipe
-    const SEPARATOR_REGEX = /[\s,\n|]+/;
-
     if (trimmed) {
-      // Split input by regex, filter empty strings, and remove duplicates within the new batch
+      const regex = SEPARATORS[separatorKey].regex;
       const newPlayersRaw = trimmed
-        .split(SEPARATOR_REGEX)
+        .split(regex)
         .filter(name => name.trim().length > 0);
       
-      // Filter out names that are already in the list to ensure uniqueness for Drag and Drop
       const uniqueNewPlayers = newPlayersRaw.filter(
         (name, index, self) => 
           self.indexOf(name) === index && !players.includes(name)
@@ -68,18 +76,15 @@ const App: React.FC = () => {
         });
         setInputValue('');
         
-        // Show success indicator on button
         setShowAddSuccess(true);
         setTimeout(() => setShowAddSuccess(false), 1500);
 
-        // Force focus back to input to allow rapid entry
-        // Use requestAnimationFrame to ensure it runs after render
         requestAnimationFrame(() => {
            inputRef.current?.focus();
         });
       } else if (newPlayersRaw.length > 0) {
-        // Handle case where names existed but were duplicates
-        alert("Player(s) already in the list.");
+        setError("Player(s) already in the list or invalid format.");
+        setTimeout(() => setError(null), 2000);
       }
     }
   };
@@ -107,7 +112,6 @@ const App: React.FC = () => {
     setGeneratedTeams(null);
     setCountdown(3);
 
-    // Countdown Logic
     let count = 3;
     const interval = setInterval(() => {
       count--;
@@ -116,9 +120,18 @@ const App: React.FC = () => {
       } else {
         clearInterval(interval);
         setCountdown(null);
-        // Finalize generation
+        
+        // --- Core Logic ---
         const shuffled = shuffleArray([...players]);
-        const chunks = distributeBalanced(shuffled, maxPerTeam);
+        let chunks: string[][] = [];
+
+        if (generationMode === 'MAX_SIZE') {
+          chunks = distributeBalanced(shuffled, maxPerTeam);
+        } else {
+          // If fixed count is greater than players, cap it
+          const actualTeamCount = Math.min(fixedTeamCount, players.length);
+          chunks = distributeIntoCount(shuffled, actualTeamCount);
+        }
         
         const results: TeamResult[] = chunks.map((members, idx) => ({
           id: idx + 1,
@@ -128,20 +141,20 @@ const App: React.FC = () => {
         setGeneratedTeams(results);
         setIsGenerating(false);
       }
-    }, 600); // 600ms per number for a snappy 1.8s total wait
+    }, 600);
   };
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center bg-gray-50 text-gray-900 font-medium">
       
       {/* Header */}
-      <header className="w-full max-w-5xl mb-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-4">
+      <header className="w-full max-w-5xl mb-8 flex flex-col md:flex-row justify-between items-center md:items-end gap-4">
         <div className="text-center md:text-left">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900">
             Squad<span className="text-indigo-600">Assembler</span>
           </h1>
           <p className="text-sm font-semibold text-gray-400 mt-1 uppercase tracking-widest">
-            Balanced Team Generator
+            Tactical Team Generator
           </p>
         </div>
         <div className="px-4 py-2 bg-white rounded-full shadow-sm border border-gray-100 flex items-center gap-2">
@@ -153,10 +166,10 @@ const App: React.FC = () => {
       <main className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* LEFT COLUMN: Controls */}
-        <div className="lg:col-span-5 space-y-8">
+        <div className="lg:col-span-5 space-y-6">
           
           {/* Game Selection */}
-          <section className="bg-white p-6 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
+          <section className="bg-white p-5 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Select Game</h2>
             <GameSelector 
               selected={selectedGame} 
@@ -165,40 +178,91 @@ const App: React.FC = () => {
           </section>
 
           {/* Configuration */}
-          <section className="bg-white p-6 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
-             <div className="flex justify-between items-center mb-6">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Max Players Per Team</label>
-                <div className="w-10 h-10 flex items-center justify-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg">
-                  {maxPerTeam}
-                </div>
+          <section className="bg-white p-5 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
+             <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+               {(['MAX_SIZE', 'FIXED_COUNT'] as const).map(mode => (
+                 <button
+                   key={mode}
+                   onClick={() => setGenerationMode(mode)}
+                   className={`flex-1 py-2 text-[10px] font-extrabold uppercase tracking-wide rounded-lg transition-all ${
+                     generationMode === mode 
+                       ? 'bg-white text-indigo-600 shadow-sm' 
+                       : 'text-gray-400 hover:text-gray-600'
+                   }`}
+                 >
+                   {mode === 'MAX_SIZE' ? 'Max Players / Team' : 'Fixed # of Teams'}
+                 </button>
+               ))}
              </div>
-             <input 
-               type="range" 
-               min="1" 
-               max="10" 
-               value={maxPerTeam}
-               onChange={(e) => setMaxPerTeam(parseInt(e.target.value))}
-               className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
-             />
-             <div className="flex justify-between text-[10px] text-gray-400 mt-3 font-bold">
-                <span>1</span>
-                <span>5</span>
-                <span>10</span>
-             </div>
+
+             {generationMode === 'MAX_SIZE' ? (
+               <>
+                 <div className="flex justify-between items-center mb-4">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Team Size Limit</label>
+                    <div className="w-10 h-10 flex items-center justify-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg">
+                      {maxPerTeam}
+                    </div>
+                 </div>
+                 <input 
+                   type="range" 
+                   min="1" 
+                   max="10" 
+                   value={maxPerTeam}
+                   onChange={(e) => setMaxPerTeam(parseInt(e.target.value))}
+                   className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
+                 />
+                 <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-bold">
+                    <span>1</span>
+                    <span>10</span>
+                 </div>
+               </>
+             ) : (
+               <>
+                 <div className="flex justify-between items-center mb-4">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Teams</label>
+                    <div className="w-10 h-10 flex items-center justify-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg">
+                      {fixedTeamCount}
+                    </div>
+                 </div>
+                 <input 
+                   type="range" 
+                   min="2" 
+                   max="20" 
+                   value={fixedTeamCount}
+                   onChange={(e) => setFixedTeamCount(parseInt(e.target.value))}
+                   className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
+                 />
+                 <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-bold">
+                    <span>2</span>
+                    <span>20</span>
+                 </div>
+               </>
+             )}
           </section>
 
           {/* Player Input */}
-          <section className="bg-white p-6 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
+          <section className="bg-white p-5 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
             <div className="flex justify-between items-center mb-4">
-               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Add Players</h2>
-               {players.length > 0 && (
-                 <button 
-                  onClick={handleClearPlayers}
-                  className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
+               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Roster</h2>
+               <div className="flex items-center gap-2">
+                 <select 
+                   value={separatorKey}
+                   onChange={(e) => setSeparatorKey(e.target.value as keyof typeof SEPARATORS)}
+                   className="text-[10px] font-bold text-gray-500 bg-gray-50 border-none rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500"
                  >
-                   CLEAR ALL
-                 </button>
-               )}
+                   {Object.entries(SEPARATORS).map(([key, val]) => (
+                     <option key={key} value={key}>{val.label}</option>
+                   ))}
+                 </select>
+                 {players.length > 0 && (
+                   <button 
+                    onClick={handleClearPlayers}
+                    className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg hover:bg-red-100 transition-colors"
+                   >
+                     CLEAR
+                   </button>
+                 )}
+               </div>
             </div>
             
             <form onSubmit={handleAddPlayer} className="flex gap-2 mb-4">
@@ -211,8 +275,8 @@ const App: React.FC = () => {
                   if (showAddSuccess) setShowAddSuccess(false);
                   if (error) setError(null);
                 }}
-                placeholder="Ex: Hy Khánh Đạt"
-                className="flex-1 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl p-3 text-gray-900 placeholder-gray-400 focus:outline-none font-bold transition-all"
+                placeholder="Enter names..."
+                className="flex-1 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl p-3 text-gray-900 placeholder-gray-400 focus:outline-none font-bold transition-all text-sm"
               />
               <button 
                 type="submit"
@@ -232,7 +296,7 @@ const App: React.FC = () => {
                       initial={{ scale: 0, rotate: -45 }} 
                       animate={{ scale: 1, rotate: 0 }} 
                       exit={{ scale: 0 }}
-                      xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                      xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
                     >
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </motion.svg>
@@ -257,7 +321,7 @@ const App: React.FC = () => {
             />
             
             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-xs font-bold text-gray-400 uppercase">Total Players</span>
+              <span className="text-xs font-bold text-gray-400 uppercase">Active Agents</span>
               <span className="text-sm font-extrabold text-gray-900 bg-gray-100 px-3 py-1 rounded-lg">{players.length}</span>
             </div>
           </section>
@@ -267,7 +331,7 @@ const App: React.FC = () => {
         {/* RIGHT COLUMN: Results */}
         <div className="lg:col-span-7 flex flex-col h-full">
            
-           <div className="flex-1 bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 relative overflow-hidden flex flex-col">
+           <div className="flex-1 bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 relative overflow-hidden flex flex-col min-h-[400px]">
               
               <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-6">
                 <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
@@ -275,7 +339,7 @@ const App: React.FC = () => {
                 </h2>
                 {generatedTeams && (
                   <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-                    {generatedTeams.length} TEAMS GENERATED
+                    {generatedTeams.length} SQUADS
                   </span>
                 )}
               </div>
@@ -287,7 +351,7 @@ const App: React.FC = () => {
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
                      exit={{ opacity: 0, scale: 2, filter: "blur(10px)" }}
-                     className="flex-1 flex flex-col items-center justify-center space-y-8 min-h-[300px]"
+                     className="flex-1 flex flex-col items-center justify-center space-y-8"
                    >
                      {/* Countdown Animation */}
                      <div className="relative flex items-center justify-center">
@@ -310,7 +374,7 @@ const App: React.FC = () => {
                      </div>
                      
                      <p className="animate-pulse text-indigo-600 font-extrabold text-sm tracking-[0.2em] uppercase">
-                       Drafting Agents...
+                       Processing Data...
                      </p>
                    </motion.div>
                 ) : generatedTeams ? (
@@ -321,19 +385,19 @@ const App: React.FC = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex-1 flex flex-col items-center justify-center text-gray-300 space-y-4 min-h-[300px]"
+                    className="flex-1 flex flex-col items-center justify-center text-gray-300 space-y-4"
                   >
                     <div className="w-24 h-24 rounded-3xl bg-gray-50 border-4 border-dashed border-gray-200 flex items-center justify-center">
                        <span className="text-4xl font-black text-gray-200">?</span>
                     </div>
-                    <p className="text-sm font-bold uppercase tracking-widest">Ready to Assemble</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">Awaiting Command</p>
                   </motion.div>
                 )}
               </AnimatePresence>
            </div>
 
            {/* BIG ACTION BUTTON AND ERROR MESSAGE */}
-           <div className="relative mt-6">
+           <div className="relative mt-6 pb-6 lg:pb-0">
               <AnimatePresence>
                 {error && (
                   <motion.div
@@ -385,7 +449,7 @@ const App: React.FC = () => {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
                       >
-                         {generatedTeams ? 'Reroll Teams' : 'Generate Teams'}
+                         {generatedTeams ? 'REROLL SQUADS' : 'GENERATE SQUADS'}
                       </motion.span>
                     )}
                  </AnimatePresence>
