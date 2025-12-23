@@ -17,6 +17,7 @@ const SEPARATORS = {
   AUTO: { label: 'Auto (Spaces, Commas)', regex: /[\s,\n|]+/ },
   NEWLINE: { label: 'New Lines Only', regex: /[\n]+/ },
   COMMA: { label: 'Commas Only', regex: /[,]+/ },
+  CUSTOM: { label: 'Custom Regex', regex: null }, // Handled dynamically
 };
 
 const App: React.FC = () => {
@@ -35,7 +36,10 @@ const App: React.FC = () => {
   const [generationMode, setGenerationMode] = useState<GenerationMode>('MAX_SIZE');
   const [maxPerTeam, setMaxPerTeam] = useState<number>(selectedGame.teamSize);
   const [fixedTeamCount, setFixedTeamCount] = useState<number>(2);
+  
+  // Input Handling State
   const [separatorKey, setSeparatorKey] = useState<keyof typeof SEPARATORS>('AUTO');
+  const [customRegexStr, setCustomRegexStr] = useState<string>(';');
   
   const [generatedTeams, setGeneratedTeams] = useState<TeamResult[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -58,7 +62,21 @@ const App: React.FC = () => {
     const trimmed = inputValue.trim();
     
     if (trimmed) {
-      const regex = SEPARATORS[separatorKey].regex;
+      let regex: RegExp;
+
+      if (separatorKey === 'CUSTOM') {
+        try {
+          // Create regex from string, default to comma if empty to prevent crash
+          regex = new RegExp(customRegexStr || ',', 'g');
+        } catch (err) {
+          setError("Invalid Custom Regex");
+          setTimeout(() => setError(null), 2000);
+          return;
+        }
+      } else {
+        regex = SEPARATORS[separatorKey].regex!;
+      }
+
       const newPlayersRaw = trimmed
         .split(regex)
         .filter(name => name.trim().length > 0);
@@ -141,7 +159,7 @@ const App: React.FC = () => {
         setGeneratedTeams(results);
         setIsGenerating(false);
       }
-    }, 600);
+    }, 600); // 600ms per tick
   };
 
   return (
@@ -190,18 +208,23 @@ const App: React.FC = () => {
                        : 'text-gray-400 hover:text-gray-600'
                    }`}
                  >
-                   {mode === 'MAX_SIZE' ? 'Max Players / Team' : 'Fixed # of Teams'}
+                   {mode === 'MAX_SIZE' ? 'Limit per Team' : 'Exact Team Count'}
                  </button>
                ))}
              </div>
 
              {generationMode === 'MAX_SIZE' ? (
-               <>
-                 <div className="flex justify-between items-center mb-4">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Team Size Limit</label>
-                    <div className="w-10 h-10 flex items-center justify-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg">
-                      {maxPerTeam}
-                    </div>
+               <div className="space-y-4">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Max Players per Team</label>
+                    <input 
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={maxPerTeam}
+                      onChange={(e) => setMaxPerTeam(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-16 h-10 text-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                  </div>
                  <input 
                    type="range" 
@@ -211,18 +234,23 @@ const App: React.FC = () => {
                    onChange={(e) => setMaxPerTeam(parseInt(e.target.value))}
                    className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
                  />
-                 <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-bold">
+                 <div className="flex justify-between text-[10px] text-gray-400 font-bold">
                     <span>1</span>
                     <span>10</span>
                  </div>
-               </>
+               </div>
              ) : (
-               <>
-                 <div className="flex justify-between items-center mb-4">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Teams</label>
-                    <div className="w-10 h-10 flex items-center justify-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg">
-                      {fixedTeamCount}
-                    </div>
+               <div className="space-y-4">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Number of Teams</label>
+                    <input 
+                      type="number"
+                      min="2"
+                      max="50"
+                      value={fixedTeamCount}
+                      onChange={(e) => setFixedTeamCount(Math.max(2, parseInt(e.target.value) || 2))}
+                      className="w-16 h-10 text-center bg-indigo-50 rounded-xl text-indigo-600 font-extrabold text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                  </div>
                  <input 
                    type="range" 
@@ -232,28 +260,19 @@ const App: React.FC = () => {
                    onChange={(e) => setFixedTeamCount(parseInt(e.target.value))}
                    className="w-full h-3 bg-gray-100 rounded-full appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
                  />
-                 <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-bold">
+                 <div className="flex justify-between text-[10px] text-gray-400 font-bold">
                     <span>2</span>
                     <span>20</span>
                  </div>
-               </>
+               </div>
              )}
           </section>
 
           {/* Player Input */}
           <section className="bg-white p-5 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100">
-            <div className="flex justify-between items-center mb-4">
-               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Roster</h2>
-               <div className="flex items-center gap-2">
-                 <select 
-                   value={separatorKey}
-                   onChange={(e) => setSeparatorKey(e.target.value as keyof typeof SEPARATORS)}
-                   className="text-[10px] font-bold text-gray-500 bg-gray-50 border-none rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500"
-                 >
-                   {Object.entries(SEPARATORS).map(([key, val]) => (
-                     <option key={key} value={key}>{val.label}</option>
-                   ))}
-                 </select>
+            <div className="flex flex-col gap-3 mb-4">
+               <div className="flex justify-between items-center">
+                 <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Roster</h2>
                  {players.length > 0 && (
                    <button 
                     onClick={handleClearPlayers}
@@ -261,6 +280,29 @@ const App: React.FC = () => {
                    >
                      CLEAR
                    </button>
+                 )}
+               </div>
+
+               {/* Separator Controls */}
+               <div className="flex gap-2 items-center">
+                 <select 
+                   value={separatorKey}
+                   onChange={(e) => setSeparatorKey(e.target.value as keyof typeof SEPARATORS)}
+                   className="flex-1 text-[10px] font-bold text-gray-500 bg-gray-50 border-none rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-indigo-500"
+                 >
+                   {Object.entries(SEPARATORS).map(([key, val]) => (
+                     <option key={key} value={key}>{val.label}</option>
+                   ))}
+                 </select>
+                 
+                 {separatorKey === 'CUSTOM' && (
+                    <input 
+                      type="text"
+                      value={customRegexStr}
+                      onChange={(e) => setCustomRegexStr(e.target.value)}
+                      placeholder="Regex..."
+                      className="w-24 text-[10px] font-mono bg-gray-50 border border-gray-200 rounded-lg px-2 py-2 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    />
                  )}
                </div>
             </div>
@@ -275,7 +317,7 @@ const App: React.FC = () => {
                   if (showAddSuccess) setShowAddSuccess(false);
                   if (error) setError(null);
                 }}
-                placeholder="Enter names..."
+                placeholder={separatorKey === 'CUSTOM' ? "Enter names using your regex..." : "Enter names..."}
                 className="flex-1 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 rounded-xl p-3 text-gray-900 placeholder-gray-400 focus:outline-none font-bold transition-all text-sm"
               />
               <button 
@@ -333,7 +375,7 @@ const App: React.FC = () => {
            
            <div className="flex-1 bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 relative overflow-hidden flex flex-col min-h-[400px]">
               
-              <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-6">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-6 z-10 relative">
                 <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
                   Teams Overview
                 </h2>
@@ -350,23 +392,28 @@ const App: React.FC = () => {
                      key="loading"
                      initial={{ opacity: 0 }}
                      animate={{ opacity: 1 }}
-                     exit={{ opacity: 0, scale: 2, filter: "blur(10px)" }}
-                     className="flex-1 flex flex-col items-center justify-center space-y-8"
+                     exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+                     className="flex-1 flex flex-col items-center justify-center space-y-8 z-10"
                    >
-                     {/* Countdown Animation */}
+                     {/* Enhanced Countdown Animation */}
                      <div className="relative flex items-center justify-center">
                         <motion.div 
                            animate={{ rotate: 360 }}
+                           transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                           className="w-40 h-40 rounded-full border-[6px] border-gray-100 border-t-indigo-500 border-r-indigo-400"
+                        />
+                        <motion.div 
+                           animate={{ rotate: -180 }}
                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                           className="w-32 h-32 rounded-full border-4 border-gray-100 border-t-indigo-600"
+                           className="absolute w-32 h-32 rounded-full border-[4px] border-transparent border-b-cyan-400 opacity-50"
                         />
                         <AnimatePresence mode="wait">
                            <motion.span 
                               key={countdown}
-                              initial={{ scale: 0.5, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 1.5, opacity: 0 }}
-                              className="absolute text-5xl font-black text-gray-900"
+                              initial={{ scale: 0.5, opacity: 0, y: 10 }}
+                              animate={{ scale: 1, opacity: 1, y: 0 }}
+                              exit={{ scale: 1.5, opacity: 0, y: -10 }}
+                              className="absolute text-6xl font-black text-gray-900"
                            >
                               {countdown}
                            </motion.span>
@@ -374,7 +421,7 @@ const App: React.FC = () => {
                      </div>
                      
                      <p className="animate-pulse text-indigo-600 font-extrabold text-sm tracking-[0.2em] uppercase">
-                       Processing Data...
+                       Calculating Optimal Synergy...
                      </p>
                    </motion.div>
                 ) : generatedTeams ? (
@@ -385,7 +432,7 @@ const App: React.FC = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex-1 flex flex-col items-center justify-center text-gray-300 space-y-4"
+                    className="flex-1 flex flex-col items-center justify-center text-gray-300 space-y-4 z-10"
                   >
                     <div className="w-24 h-24 rounded-3xl bg-gray-50 border-4 border-dashed border-gray-200 flex items-center justify-center">
                        <span className="text-4xl font-black text-gray-200">?</span>
@@ -420,13 +467,22 @@ const App: React.FC = () => {
                  onClick={handleGenerateTeams}
                  disabled={isGenerating || players.length < 2}
                  className={`
-                   w-full py-5 rounded-2xl text-lg font-black tracking-wide uppercase transition-all transform active:scale-[0.99] overflow-hidden relative
+                   w-full py-5 rounded-2xl text-lg font-black tracking-wide uppercase transition-all transform active:scale-[0.99] overflow-hidden relative group
                    ${isGenerating || players.length < 2
                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                      : 'bg-gray-900 text-white shadow-xl shadow-gray-900/20 hover:bg-black hover:shadow-2xl'
                    }
                  `}
                >
+                 {/* Decorative background swirl for button */}
+                 {!isGenerating && players.length >= 2 && (
+                   <motion.div 
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 translate-x-[-150%]"
+                      animate={{ translateX: ['-150%', '150%'] }}
+                      transition={{ repeat: Infinity, duration: 2, ease: "easeInOut", repeatDelay: 3 }}
+                   />
+                 )}
+
                  <AnimatePresence mode="wait">
                     {isGenerating ? (
                       <motion.div
@@ -448,6 +504,7 @@ const App: React.FC = () => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
+                        className="relative z-10"
                       >
                          {generatedTeams ? 'REROLL SQUADS' : 'GENERATE SQUADS'}
                       </motion.span>

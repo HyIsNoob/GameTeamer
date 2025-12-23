@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 
 interface TeamResult {
   id: number;
@@ -14,12 +14,12 @@ interface Props {
 const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  const container = {
+  const container: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1
+        staggerChildren: 0.15
       }
     },
     exit: {
@@ -32,8 +32,8 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
     }
   };
 
-  const item = {
-    hidden: { opacity: 0, y: 20, scale: 0.9 },
+  const item: Variants = {
+    hidden: { opacity: 0, y: 30, scale: 0.9 },
     show: { 
       opacity: 1, 
       y: 0, 
@@ -53,6 +53,9 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
   };
 
   const badgeClass = getBadgeColor(gameColor);
+  
+  // Extract the color name for border effects (e.g., "red-500" from "text-red-500")
+  const colorBase = gameColor.replace('text-', '');
 
   const handleCopy = (team: TeamResult) => {
     // Format: "Team 1: Alice, Bob, Charlie"
@@ -70,7 +73,7 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
       initial="hidden"
       animate="show"
       exit="exit"
-      className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full overflow-y-auto pr-1"
+      className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full overflow-y-auto pr-1 pb-4"
     >
       {teams.map((team) => (
         <motion.div
@@ -78,19 +81,38 @@ const TeamDisplay: React.FC<Props> = ({ teams, gameColor }) => {
           variants={item}
           className="bg-gray-50 border border-gray-100 p-5 rounded-2xl flex flex-col hover:shadow-lg hover:shadow-gray-200/50 hover:bg-white transition-all duration-300 group relative overflow-hidden"
         >
-          {/* Subtle Flash Animation on Entry */}
+          {/* Success/Ready Flash Animation on Entry */}
+          <motion.div 
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 1.5, ease: "easeOut", delay: 0.1 }}
+            className={`absolute inset-0 border-2 border-${colorBase} rounded-2xl pointer-events-none z-20`}
+            style={{ boxShadow: `inset 0 0 20px rgba(0,0,0,0.05)` }}
+          />
+          
+          {/* Subtle Flash Animation on Entry (Sweep) */}
           <motion.div 
             initial={{ opacity: 0.5, left: "-100%" }}
             animate={{ opacity: 0, left: "100%" }}
-            transition={{ duration: 1, ease: "easeInOut", delay: 0.2 }}
+            transition={{ duration: 0.8, ease: "easeInOut", delay: 0.1 }}
             className="absolute top-0 w-full h-full bg-gradient-to-r from-transparent via-white to-transparent pointer-events-none z-10 skew-x-12"
           />
 
           {/* Header */}
           <div className="flex justify-between items-start mb-4 relative z-0">
-             <span className={`text-xs font-black tracking-widest uppercase px-2 py-1 rounded-md ${badgeClass}`}>
-               Team {team.id}
-             </span>
+             <div className="flex items-center gap-2">
+                <span className={`text-xs font-black tracking-widest uppercase px-2 py-1 rounded-md ${badgeClass}`}>
+                  Team {team.id}
+                </span>
+                
+                {/* Visual Indicator Dot */}
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.5, type: "spring" }}
+                  className={`w-2 h-2 rounded-full bg-${colorBase}`}
+                />
+             </div>
              
              <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase hidden sm:inline-block">
