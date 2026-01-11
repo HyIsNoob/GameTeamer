@@ -44,7 +44,7 @@ export const GAMES: GamePreset[] = [
   },
   {
     id: 'custom',
-    name: 'CUSTOM_PROTOCOL',
+    name: 'CUSTOM',
     teamSize: 4,
     color: 'text-zinc-200',
     borderColor: 'border-zinc-200',
