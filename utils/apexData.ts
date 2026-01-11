@@ -80,6 +80,6 @@ export const APEX_WEAPONS: Weapon[] = [
   { id: "mozambique", name: "Mozambique", type: "Shotgun", ammo: "Shotgun", image: "Mozambique_Shotgun.png" },
   { id: "peacekeeper", "name": "Peacekeeper", type: "Shotgun", ammo: "Shotgun", image: "Peacekeeper.png" },
   { id: "p2020", name: "P2020", type: "Pistol", ammo: "Light", image: "P2020.png" },
-  { id: "re45", name: "RE-45 Auto", type: "Pistol", ammo: "Light", image: "RE-45_Auto.png" },
+  { id: "re45", name: "RE-45 Auto", type: "Pistol", ammo: "Energy", image: "RE-45_Auto.png" },
   { id: "wingman", name: "Wingman", type: "Pistol", ammo: "Sniper", image: "Wingman.png" }
 ];
