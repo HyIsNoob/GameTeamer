@@ -6,18 +6,13 @@ export interface Loadout {
   secondary: Weapon;
 }
 
-export const getRandomLoadout = (excludedLegendIds: string[] = []): Loadout => {
+export const getRandomLoadout = (excludedLegendIds: string[] = [], excludedWeaponIds: string[] = []): Loadout => {
   // Filter available legends
   const availableLegends = APEX_LEGENDS.filter(l => !excludedLegendIds.includes(l.id));
   
-  // Fallback if all are excluded (shouldn't happen in normal logic, but safety first)
-  // If fallback, at least respect the "Not Owned" isn't strictly possible if we want unique, 
-  // but if collision forces it, we prioritize "Game works" over "Unique".
-  // Ideally, if pool is empty, we must pick *something*. 
+  // Fallback if all are excluded
   let pool = availableLegends;
   if (pool.length === 0) {
-      // Emergency Fallback: Pick any legend not in specific "Hard Bans" if we had that, 
-      // but here we just reset to all because valid game state is better than crash.
       pool = APEX_LEGENDS;
   }
 
@@ -25,17 +20,23 @@ export const getRandomLoadout = (excludedLegendIds: string[] = []): Loadout => {
   const legend = pool[Math.floor(Math.random() * pool.length)];
 
   // Pick Weapons
+  // 1. Filter out excluded weapons AND Care Package weapons (Global)
+  const availableWeapons = APEX_WEAPONS.filter(w => 
+    !excludedWeaponIds.includes(w.id) &&
+    !w.isCarePackage
+  );
+  
+  const weaponPool = availableWeapons.length > 0 ? availableWeapons : APEX_WEAPONS;
+
   // Logic: Pick Primary, then Pick Secondary distinct from Primary Type
-  const primary = APEX_WEAPONS[Math.floor(Math.random() * APEX_WEAPONS.length)];
+  const primary = weaponPool[Math.floor(Math.random() * weaponPool.length)];
   
   // Filter weapons that have different TYPE from primary
-  // Exception: If primary is unique type? No, usually plenty of types.
-  // Requirement: "2 loại súng nên khác loại nhau" -> Type based differentness.
-  const secondaryCandidates = APEX_WEAPONS.filter(w => w.type !== primary.type);
+  const secondaryCandidates = weaponPool.filter(w => w.type !== primary.type);
   
   const secondary = secondaryCandidates.length > 0
     ? secondaryCandidates[Math.floor(Math.random() * secondaryCandidates.length)]
-    : APEX_WEAPONS.find(w => w.id !== primary.id) || primary; // Fallback
+    : weaponPool.find(w => w.id !== primary.id) || primary;
 
   return { legend, primary, secondary };
 };

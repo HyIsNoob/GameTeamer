@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { getRandomLoadout, Loadout } from '../utils/apexLogic';
-import { APEX_LEGENDS } from '../utils/apexData';
+import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
 import LegendCard from '../components/apex/LegendCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -26,6 +26,7 @@ const ApexLegends: React.FC = () => {
   // --- Setup State ---
   const [setupMode, setSetupMode] = useState<'JOIN' | 'CREATE'>('CREATE');
   const [showPoolModal, setShowPoolModal] = useState(false);
+  const [poolTab, setPoolTab] = useState<'LEGENDS' | 'WEAPONS'>('LEGENDS');
   const [myExcludes, setMyExcludes] = useState<string[]>(() => {
     const s = localStorage.getItem('apex_user_excludes');
     return s ? JSON.parse(s) : [];
@@ -47,6 +48,7 @@ const ApexLegends: React.FC = () => {
   });
 
   const [isGlobalRolling, setIsGlobalRolling] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // --- Helpers ---
   const handlePoolToggle = (legendId: string) => {
@@ -153,8 +155,13 @@ const ApexLegends: React.FC = () => {
   };
 
   const handleRandomize = (slotIndex: number) => {
-    const unavailable = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, gameState.bans);
-    const newLoadout = getRandomLoadout(unavailable);
+    const unavailableLegends = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, gameState.bans);
+    
+    // Get player specific excludes (for weapons)
+    const playerAtSlot = players.find(p => p.slotIndex === slotIndex);
+    const playerExcludes = playerAtSlot?.excludedLegends || [];
+
+    const newLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
     
     // Check if newLoadout is valid? getRandomLoadout handles fallback
 
@@ -167,7 +174,13 @@ const ApexLegends: React.FC = () => {
     channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
   };
 
-  const handleGlobalReroll = () => {
+  const handleGlobalRerollRequest = () => {
+     setShowConfirmModal(true);
+  };
+
+  const executeGlobalReroll = () => {
+    setShowConfirmModal(false);
+    
     // 1. Notify everyone to start rolling animation
     channel?.send({ type: 'broadcast', event: 'GAME_ROLL_START', payload: {} });
     setIsGlobalRolling(true);
@@ -180,8 +193,12 @@ const ApexLegends: React.FC = () => {
       const newBans = gameState.bans; // Keep existing bans
 
       slots.forEach(slot => {
-          const unavailable = getUnavailableLegendsForSlot(slot, tempLoadouts, newBans);
-          const loadout = getRandomLoadout(unavailable);
+          const unavailableLegends = getUnavailableLegendsForSlot(slot, tempLoadouts, newBans);
+          
+          const playerAtSlot = players.find(p => p.slotIndex === slot);
+          const playerExcludes = playerAtSlot?.excludedLegends || [];
+
+          const loadout = getRandomLoadout(unavailableLegends, playerExcludes);
           tempLoadouts[slot] = loadout;
       });
       
@@ -203,8 +220,11 @@ const ApexLegends: React.FC = () => {
      };
      
      // Auto reroll this slot to clear bans
-     const unavailable = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, newState.bans);
-     newState.loadouts[slotIndex] = getRandomLoadout(unavailable);
+     const unavailableLegends = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, newState.bans);
+     const playerAtSlot = players.find(p => p.slotIndex === slotIndex);
+     const playerExcludes = playerAtSlot?.excludedLegends || [];
+     
+     newState.loadouts[slotIndex] = getRandomLoadout(unavailableLegends, playerExcludes);
 
      setGameState(newState);
      channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
@@ -307,65 +327,67 @@ const ApexLegends: React.FC = () => {
           <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
              <div className="bg-gray-900 border border-gray-700 w-full max-w-2xl h-[80vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl">
                 <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-950">
-                   <h2 className="text-xl font-bold uppercase">Manage Your Legends</h2>
+                   <h2 className="text-xl font-bold uppercase">Pool Configuration</h2>
                    <button onClick={() => setShowPoolModal(false)} className="bg-gray-800 p-2 rounded-full hover:bg-gray-700">✕</button>
                 </div>
+                
                 <div className="p-4 bg-red-900/10 border-b border-red-900/20 text-red-200 text-xs text-center">
-                    Select the legends you DON'T own to exclude them from the pool.
+                    Select items to <span className="font-bold">EXCLUDE</span> from the randomizer.
                 </div>
+                
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
-                   {['Assault', 'Skirmisher', 'Recon', 'Support', 'Controller'].map((role) => (
-                      <div key={role}>
-                        <div className="flex items-center gap-2 mb-3">
-                           <div className={`w-2 h-2 rounded-full ${
-                              role === 'Assault' ? 'bg-red-500' :
-                              role === 'Skirmisher' ? 'bg-orange-400' :
-                              role === 'Recon' ? 'bg-blue-400' :
-                              role === 'Support' ? 'bg-teal-400' : 'bg-purple-500'
-                           }`} />
-                           <h3 className="text-gray-300 font-black uppercase text-xs tracking-[0.2em]">{role}</h3>
-                           <div className="h-px bg-gray-800 flex-1" />
+                     {['Assault', 'Skirmisher', 'Recon', 'Support', 'Controller'].map((role) => (
+                        <div key={role}>
+                          <div className="flex items-center gap-2 mb-3">
+                             <div className={`w-2 h-2 rounded-full ${
+                                role === 'Assault' ? 'bg-red-500' :
+                                role === 'Skirmisher' ? 'bg-orange-400' :
+                                role === 'Recon' ? 'bg-blue-400' :
+                                role === 'Support' ? 'bg-teal-400' : 'bg-purple-500'
+                             }`} />
+                             <h3 className="text-gray-300 font-black uppercase text-xs tracking-[0.2em]">{role}</h3>
+                             <div className="h-px bg-gray-800 flex-1" />
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                             {APEX_LEGENDS.filter(l => l.class === role).map(leg => {
+                                const isExcluded = myExcludes.includes(leg.id);
+                                return (
+                                  <motion.button 
+                                    key={leg.id}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => handlePoolToggle(leg.id)}
+                                    className={`p-3 rounded-xl border flex items-center gap-3 transition-all text-left relative overflow-hidden group ${
+                                       !isExcluded 
+                                          ? 'bg-gray-800 border-gray-700 text-white hover:border-gray-500' 
+                                          : 'bg-black/40 border-gray-800 text-gray-500 grayscale opacity-50'
+                                    }`}
+                                  >
+                                     <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity ${
+                                        role === 'Assault' ? 'bg-red-500' :
+                                        role === 'Skirmisher' ? 'bg-orange-400' :
+                                        role === 'Recon' ? 'bg-blue-400' :
+                                        role === 'Support' ? 'bg-teal-400' : 'bg-purple-500'
+                                     }`} />
+                                     
+                                     <img 
+                                        src={leg.icon ? `/icons/${leg.icon}` : (leg.image ? `/legends/${leg.image}` : `/legends/${leg.id}.png`)} 
+                                        className="w-10 h-10 bg-black/50 rounded-md"
+                                        onError={(e) => e.currentTarget.style.display = 'none'}
+                                     />
+                                     <span className="font-bold text-xs uppercase truncate">{leg.name}</span>
+                                     
+                                     {isExcluded && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-[1px]">
+                                           <span className="text-[10px] font-bold text-red-500 uppercase border border-red-500 px-1 rounded">Banned</span>
+                                        </div>
+                                     )}
+                                  </motion.button>
+                                );
+                             })}
+                          </div>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                           {APEX_LEGENDS.filter(l => l.class === role).map(leg => {
-                              const isExcluded = myExcludes.includes(leg.id);
-                              return (
-                                <motion.button 
-                                  key={leg.id}
-                                  whileHover={{ scale: 1.02 }}
-                                  whileTap={{ scale: 0.98 }}
-                                  onClick={() => handlePoolToggle(leg.id)}
-                                  className={`p-3 rounded-xl border flex items-center gap-3 transition-all text-left relative overflow-hidden group ${
-                                     !isExcluded 
-                                        ? 'bg-gray-800 border-gray-700 text-white hover:border-gray-500' 
-                                        : 'bg-black/40 border-gray-800 text-gray-500 grayscale opacity-50'
-                                  }`}
-                                >
-                                   <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity ${
-                                      role === 'Assault' ? 'bg-red-500' :
-                                      role === 'Skirmisher' ? 'bg-orange-400' :
-                                      role === 'Recon' ? 'bg-blue-400' :
-                                      role === 'Support' ? 'bg-teal-400' : 'bg-purple-500'
-                                   }`} />
-                                   
-                                   <img 
-                                      src={leg.icon ? `/icons/${leg.icon}` : (leg.image ? `/legends/${leg.image}` : `/legends/${leg.id}.png`)} 
-                                      className="w-10 h-10 bg-black/50 rounded-md"
-                                      onError={(e) => e.currentTarget.style.display = 'none'}
-                                   />
-                                   <span className="font-bold text-xs uppercase truncate">{leg.name}</span>
-                                   
-                                   {isExcluded && (
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-[1px]">
-                                         <span className="text-[10px] font-bold text-red-500 uppercase border border-red-500 px-1 rounded">Banned</span>
-                                      </div>
-                                   )}
-                                </motion.button>
-                              );
-                           })}
-                        </div>
-                      </div>
-                   ))}
+                     ))}
                 </div>
                 <div className="p-6 border-t border-gray-800 bg-gray-950 flex justify-end">
                    <button onClick={() => setShowPoolModal(false)} className="px-8 py-3 bg-white text-black font-bold uppercase rounded-xl">
@@ -405,7 +427,7 @@ const ApexLegends: React.FC = () => {
                  {players.length} Active
               </span>
               <button 
-                onClick={handleGlobalReroll}
+                onClick={handleGlobalRerollRequest}
                 className="px-6 py-3 bg-gradient-to-r from-red-600 to-orange-600 text-white font-black uppercase text-sm rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all"
               >
                 Deploy Team Randomizer
@@ -425,7 +447,7 @@ const ApexLegends: React.FC = () => {
           {[0, 1, 2].map((slotIndex) => {
              // Find player in this slot
              const player = players.find(p => p.slotIndex === slotIndex);
-             const isMe = player?.id === myId;
+             const isMe = !!(player && myId && player.id === myId);
              const isOccupied = !!player;
              
              return (
@@ -442,7 +464,7 @@ const ApexLegends: React.FC = () => {
                     playerIndex={slotIndex}
                     playerName={player?.name || `Waiting for Player...`}
                     loadout={gameState.loadouts[slotIndex] || null}
-                    isCurrentUser={true} 
+                    isCurrentUser={isMe} 
                     onReroll={() => handleRandomize(slotIndex)}
                     onExclude={(id) => handleBan(slotIndex, id)}
                     isRolling={isGlobalRolling}
@@ -462,6 +484,41 @@ const ApexLegends: React.FC = () => {
        <footer className="mt-6 text-center text-gray-600 text-[10px] font-mono uppercase tracking-widest">
           SQd-ASSEMBLER v2.0 // SYNC_MODE: ACTIVE // {roomId}
        </footer>
+
+       {/* CONFIRMATION MODAL */}
+       {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-gray-900 border-2 border-red-600 rounded-2xl p-8 max-w-sm w-full shadow-2xl relative overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-red-600/10 animate-pulse pointer-events-none" />
+            
+            <h3 className="text-2xl font-black text-white uppercase text-center mb-4 tracking-tighter">
+              Full Squad Reroll?
+            </h3>
+            <p className="text-gray-400 text-center text-sm mb-8 font-mono">
+              This action will randomize loadouts for ALL players. Current selections will be lost.
+            </p>
+            
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={executeGlobalReroll}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold uppercase rounded-xl shadow-lg shadow-red-900/50 transition-transform active:scale-95"
+              >
+                Confirm
+              </button>
+            </div>
+          </motion.div>
+        </div>
+       )}
     </div>
   );
 };

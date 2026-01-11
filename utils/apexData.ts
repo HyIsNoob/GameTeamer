@@ -10,8 +10,9 @@ export interface Weapon {
   id: string;
   name: string;
   type: 'Assault Rifle' | 'SMG' | 'LMG' | 'Marksman' | 'Sniper' | 'Shotgun' | 'Pistol';
-  ammo: 'Energy' | 'Heavy' | 'Light' | 'Sniper' | 'Shotgun';
+  ammo: 'Energy' | 'Heavy' | 'Light' | 'Sniper' | 'Shotgun' | 'Arrows' | 'Mythic';
   image?: string;
+  isCarePackage?: boolean;
 }
 
 export const APEX_LEGENDS: Legend[] = [
@@ -54,32 +55,46 @@ export const APEX_LEGENDS: Legend[] = [
 ];
 
 export const APEX_WEAPONS: Weapon[] = [
+  // Assault Rifles
   { id: "havoc", name: "Havoc Rifle", type: "Assault Rifle", ammo: "Energy", image: "HAVOC_Rifle.png" },
   { id: "flatline", name: "VK-47 Flatline", type: "Assault Rifle", ammo: "Heavy", image: "VK-47_Flatline.png" },
   { id: "hemlok", name: "Hemlok Burst AR", type: "Assault Rifle", ammo: "Heavy", image: "Hemlok_Burst_AR.png" },
   { id: "r301", name: "R-301 Carbine", type: "Assault Rifle", ammo: "Light", image: "R-301_Carbine.png" },
   { id: "nemesis", name: "Nemesis Burst AR", type: "Assault Rifle", ammo: "Energy", image: "Nemesis_Burst_AR.png" },
+  
+  // SMGs
   { id: "alternator", name: "Alternator SMG", type: "SMG", ammo: "Light", image: "Alternator_SMG.png" },
   { id: "prowler", name: "Prowler Burst PDW", type: "SMG", ammo: "Heavy", image: "Prowler_Burst_PDW.png" },
   { id: "r99", name: "R-99 SMG", type: "SMG", ammo: "Light", image: "R-99_SMG.png" },
   { id: "volt", name: "Volt SMG", type: "SMG", ammo: "Energy", image: "Volt_SMG.png" },
-  { id: "car", name: "C.A.R. SMG", type: "SMG", ammo: "Heavy", image: "C.A.R._SMG.png" },
-  { id: "devotion", name: "Devotion LMG", type: "LMG", ammo: "Energy", image: "Devotion_LMG.png" },
+  { id: "car", name: "C.A.R. SMG", type: "SMG", ammo: "Heavy", image: "C.A.R._SMG.png", isCarePackage: true },
+  
+  // LMGs
+  { id: "devotion", name: "Devotion LMG", type: "LMG", ammo: "Energy", image: "Devotion_LMG.png"},
   { id: "lstar", name: "L-STAR EMG", type: "LMG", ammo: "Energy", image: "L-STAR_EMG.png" },
   { id: "spitfire", name: "M600 Spitfire", type: "LMG", ammo: "Light", image: "M600_Spitfire.png" },
   { id: "rampage", name: "Rampage LMG", type: "LMG", ammo: "Heavy", image: "Rampage_LMG.png" },
+  
+  // Marksman
   { id: "g7_scout", name: "G7 Scout", type: "Marksman", ammo: "Light", image: "G7_Scout.png" },
   { id: "triple_take", name: "Triple Take", type: "Marksman", ammo: "Energy", image: "Triple_Take.png" },
   { id: "3030", name: "30-30 Repeater", type: "Marksman", ammo: "Heavy", image: "30-30_Repeater.png" },
-  { id: "bocek", name: "Bocek Compound Bow", type: "Marksman", ammo: "Sniper", image: "Bocek_Compound_Bow.png" },
+  { id: "bocek", name: "Bocek Compound Bow", type: "Marksman", ammo: "Sniper", image: "Bocek_Compound_Bow.png"},
+  
+  // Snipers
   { id: "charge_rifle", name: "Charge Rifle", type: "Sniper", ammo: "Sniper", image: "Charge_Rifle.png" },
   { id: "longbow", name: "Longbow DMR", type: "Sniper", ammo: "Sniper", image: "Longbow_DMR.png" },
   { id: "sentinel", name: "Sentinel", type: "Sniper", ammo: "Sniper", image: "Sentinel.png" },
+  { id: "kraber", name: "Kraber .50-Cal Sniper", type: "Sniper", ammo: "Sniper", image: "Kraber_.50-Cal_Sniper.png", isCarePackage: true },
+  
+  // Shotguns
   { id: "eva8", name: "EVA-8 Auto", type: "Shotgun", ammo: "Shotgun", image: "EVA-8_Auto.png" },
   { id: "mastiff", name: "Mastiff Shotgun", type: "Shotgun", ammo: "Shotgun", image: "Mastiff_Shotgun.png" },
   { id: "mozambique", name: "Mozambique", type: "Shotgun", ammo: "Shotgun", image: "Mozambique_Shotgun.png" },
-  { id: "peacekeeper", "name": "Peacekeeper", type: "Shotgun", ammo: "Shotgun", image: "Peacekeeper.png" },
-  { id: "p2020", name: "P2020", type: "Pistol", ammo: "Light", image: "P2020.png" },
+  { id: "peacekeeper", name: "Peacekeeper", type: "Shotgun", ammo: "Shotgun", image: "Peacekeeper.png" },
+  
+  // Pistols
+  { id: "p2020", name: "P2020", type: "Pistol", ammo: "Light", image: "P2020.png", isCarePackage: true },
   { id: "re45", name: "RE-45 Auto", type: "Pistol", ammo: "Energy", image: "RE-45_Auto.png" },
   { id: "wingman", name: "Wingman", type: "Pistol", ammo: "Sniper", image: "Wingman.png" }
 ];
