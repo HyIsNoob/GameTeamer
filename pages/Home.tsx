@@ -98,10 +98,6 @@ const LandingPage: React.FC = () => {
 
         </motion.div>
         
-        <footer className="absolute bottom-8 text-gray-600 text-xs font-mono uppercase tracking-widest">
-           System Status: Online // Build 2024.1
-        </footer>
-
       </div>
     </div>
   );
