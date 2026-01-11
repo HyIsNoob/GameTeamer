@@ -480,10 +480,6 @@ const ApexLegends: React.FC = () => {
              );
           })}
        </motion.main>
-       
-       <footer className="mt-6 text-center text-gray-600 text-[10px] font-mono uppercase tracking-widest">
-          SQd-ASSEMBLER v2.0 // SYNC_MODE: ACTIVE // {roomId}
-       </footer>
 
        {/* CONFIRMATION MODAL */}
        {showConfirmModal && (
