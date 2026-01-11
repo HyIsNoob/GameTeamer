@@ -1,5 +1,3 @@
-# GameTeamer
-
 **Team & Loadout Randomizer for Gamers**
 
 GameTeamer is a web application that helps you generate random teams and loadouts for popular games.
@@ -13,6 +11,9 @@ Currently supported:
 
 ## Features
 
+<img width="1758" height="871" alt="image" src="https://github.com/user-attachments/assets/95911b63-78c8-4f25-9a02-dbf39f05bb27" />
+
+
 ### Apex Legends Randomizer
 - **Random Legend & Weapons** - Automatically selects a random character and 2 different weapon types.
 - **Online Multiplayer** - Create rooms and share with friends via Room Code.
@@ -21,10 +22,16 @@ Currently supported:
 - **Care Package Filter** - Automatically filters out Care Package weapons (Kraber, Bocek, Devotion, etc.).
 - **Ban System** - Exclude specific Legends you don't want to play.
 
+<img width="1837" height="864" alt="image" src="https://github.com/user-attachments/assets/31a86a3a-85e4-4c30-aa51-fb482060792d" />
+
+
 ### Squad Assembler
 - Generate random teams from a list of names.
 - Supports multiple team configurations (2v2, 3v3, 4v4, 5v5, 6v6).
 - Quick copy results.
+
+<img width="1595" height="845" alt="image" src="https://github.com/user-attachments/assets/30870f96-bdc9-42fc-aba1-060cbfb3fd88" />
+
 
 ---
 
