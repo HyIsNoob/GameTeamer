@@ -17,41 +17,41 @@ export interface Weapon {
 
 export const APEX_LEGENDS: Legend[] = [
   // Assault
-  { id: "bangalore", name: "Bangalore", class: "Assault", image: "Bangalore_Legend_Card.png", icon: "Portrait_Bangalore_square.png" },
-  { id: "fuse", name: "Fuse", class: "Assault", image: "Fuse_Legend_Card.png", icon: "Portrait_Fuse_square.png" },
-  { id: "mad_maggie", name: "Mad Maggie", class: "Assault", image: "Mad_Maggie_Legend_Card.png", icon: "Portrait_Mad_Maggie_square.png" },
-  { id: "ballistic", name: "Ballistic", class: "Assault", image: "Ballistic_Legend_Card.png", icon: "Portrait_Ballistic_square.png" },
-  { id: "revenant", name: "Revenant", class: "Assault", image: "Revenant_Reborn_Legend_Card.png", icon: "Portrait_Revenant_square.png" },
+  { id: "bangalore", name: "Bangalore", class: "Assault", image: "bangalore.jpg", icon: "Portrait_Bangalore_square.png" },
+  { id: "fuse", name: "Fuse", class: "Assault", image: "fuse.jpg", icon: "Portrait_Fuse_square.png" },
+  { id: "mad_maggie", name: "Mad Maggie", class: "Assault", image: "mad_maggie.jpg", icon: "Portrait_Mad_Maggie_square.png" },
+  { id: "ballistic", name: "Ballistic", class: "Assault", image: "ballistic.jpg", icon: "Portrait_Ballistic_square.png" },
+  { id: "revenant", name: "Revenant", class: "Assault", image: "revenant.jpg", icon: "Portrait_Revenant_square.png" },
 
   // Skirmisher
-  { id: "ash", name: "Ash", class: "Skirmisher", image: "Ash_Legend_Card.png", icon: "Portrait_Ash_square.png" },
-  { id: "wraith", name: "Wraith", class: "Skirmisher", image: "Wraith_Legend_Card.png", icon: "Portrait_Wraith_square.png" },
-  { id: "octane", name: "Octane", class: "Skirmisher", image: "Octane_Legend_Card.png", icon: "Portrait_Octane_square.png" },
-  { id: "horizon", name: "Horizon", class: "Skirmisher", image: "Horizon_Legend_Card.png", icon: "Portrait_Horizon_square.png" },
-  { id: "pathfinder", name: "Pathfinder", class: "Skirmisher", image: "Pathfinder_Legend_Card.png", icon: "Portrait_Pathfinder_square.png" },
-  { id: "alter", name: "Alter", class: "Skirmisher", image: "Alter_Legend_Card.png", icon: "Portrait_Alter_square.png" },
+  { id: "ash", name: "Ash", class: "Skirmisher", image: "ash.jpg", icon: "Portrait_Ash_square.png" },
+  { id: "wraith", name: "Wraith", class: "Skirmisher", image: "wraith.jpg", icon: "Portrait_Wraith_square.png" },
+  { id: "octane", name: "Octane", class: "Skirmisher", image: "octane.jpg", icon: "Portrait_Octane_square.png" },
+  { id: "horizon", name: "Horizon", class: "Skirmisher", image: "horizon.jpg", icon: "Portrait_Horizon_square.png" },
+  { id: "pathfinder", name: "Pathfinder", class: "Skirmisher", image: "pathfinder.jpg", icon: "Portrait_Pathfinder_square.png" },
+  { id: "alter", name: "Alter", class: "Skirmisher", image: "alter.jpg", icon: "Portrait_Alter_square.png" },
 
   // Recon
-  { id: "valkyrie", name: "Valkyrie", class: "Recon", image: "Valkyrie_Legend_Card.png", icon: "Portrait_Valkyrie_square.png" },
-  { id: "bloodhound", name: "Bloodhound", class: "Recon", image: "Bloodhound_Legend_Card.png", icon: "Portrait_Bloodhound_square.png" },
-  { id: "crypto", name: "Crypto", class: "Recon", image: "Crypto_Legend_Card.png", icon: "Portrait_Crypto_square.png" },
-  { id: "seer", name: "Seer", class: "Recon", image: "Seer_Legend_Card.png", icon: "Portrait_Seer_square.png" },
-  { id: "vantage", name: "Vantage", class: "Recon", image: "Vantage_Legend_Card.png", icon: "Portrait_Vantage_square.png" },
-  { id: "sparrow", name: "Sparrow", class: "Recon", image: "Sparrow_Legend_Card.png", icon: "Portrait_Sparrow_square.png" },
+  { id: "valkyrie", name: "Valkyrie", class: "Recon", image: "valkyrie.jpg", icon: "Portrait_Valkyrie_square.png" },
+  { id: "bloodhound", name: "Bloodhound", class: "Recon", image: "bloodhound.jpg", icon: "Portrait_Bloodhound_square.png" },
+  { id: "crypto", name: "Crypto", class: "Recon", image: "crypto.jpg", icon: "Portrait_Crypto_square.png" },
+  { id: "seer", name: "Seer", class: "Recon", image: "seer.jpg", icon: "Portrait_Seer_square.png" },
+  { id: "vantage", name: "Vantage", class: "Recon", image: "vantage.jpg", icon: "Portrait_Vantage_square.png" },
+  { id: "sparrow", name: "Sparrow", class: "Recon", image: "sparrow.jpg", icon: "Portrait_Sparrow_square.png" },
 
   // Support
-  { id: "gibraltar", name: "Gibraltar", class: "Support", image: "Gibraltar_Legend_Card.png", icon: "Portrait_Gibraltar_square.png" },
-  { id: "lifeline", name: "Lifeline", class: "Support", image: "Lifeline_Legend_Card.png", icon: "Portrait_Lifeline_square.png" },
-  { id: "mirage", name: "Mirage", class: "Support", image: "Mirage_Legend_Card.png", icon: "Portrait_Mirage_square.png" },
-  { id: "loba", name: "Loba", class: "Support", image: "Loba_Legend_Card.png", icon: "Portrait_Loba_square.png" },
-  { id: "newcastle", name: "Newcastle", class: "Support", image: "Newcastle_Legend_Card.png", icon: "Portrait_Newcastle_square.png" },
-  { id: "conduit", name: "Conduit", class: "Support", image: "Conduit_Legend_Card.png", icon: "Portrait_Conduit_square.png" },
+  { id: "gibraltar", name: "Gibraltar", class: "Support", image: "gibraltar.jpg", icon: "Portrait_Gibraltar_square.png" },
+  { id: "lifeline", name: "Lifeline", class: "Support", image: "lifeline.jpg", icon: "Portrait_Lifeline_square.png" },
+  { id: "mirage", name: "Mirage", class: "Support", image: "mirage.jpg", icon: "Portrait_Mirage_square.png" },
+  { id: "loba", name: "Loba", class: "Support", image: "loba.jpg", icon: "Portrait_Loba_square.png" },
+  { id: "newcastle", name: "Newcastle", class: "Support", image: "newcastle.jpg", icon: "Portrait_Newcastle_square.png" },
+  { id: "conduit", name: "Conduit", class: "Support", image: "conduit.jpg", icon: "Portrait_Conduit_square.png" },
 
   // Controller
-  { id: "caustic", name: "Caustic", class: "Controller", image: "Caustic_Legend_Card.png", icon: "Portrait_Caustic_square.png" },
-  { id: "wattson", name: "Wattson", class: "Controller", image: "Wattson_Legend_Card.png", icon: "Portrait_Wattson_square.png" },
-  { id: "rampart", name: "Rampart", class: "Controller", image: "Rampart_Legend_Card.png", icon: "Portrait_Rampart_square.png" },
-  { id: "catalyst", name: "Catalyst", class: "Controller", image: "Catalyst_Legend_Card.png", icon: "Portrait_Catalyst_square.png" }
+  { id: "caustic", name: "Caustic", class: "Controller", image: "caustic.jpg", icon: "Portrait_Caustic_square.png" },
+  { id: "wattson", name: "Wattson", class: "Controller", image: "wattson.jpg", icon: "Portrait_Wattson_square.png" },
+  { id: "rampart", name: "Rampart", class: "Controller", image: "rampart.jpg", icon: "Portrait_Rampart_square.png" },
+  { id: "catalyst", name: "Catalyst", class: "Controller", image: "catalyst.jpg", icon: "Portrait_Catalyst_square.png" }
 ];
 
 export const APEX_WEAPONS: Weapon[] = [

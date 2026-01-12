@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../utils/supabase';
 import { getRandomLoadout, Loadout } from '../utils/apexLogic';
 import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
+import { soundManager } from '../utils/soundManager';
 import LegendCard from '../components/apex/LegendCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Settings, Loader2, Volume2, VolumeX, History } from 'lucide-react';
 
 // --- Types ---
 interface PlayerState {
@@ -13,11 +14,21 @@ interface PlayerState {
   name: string;
   slotIndex: number;
   excludedLegends?: string[]; // IDs they don't own/want
+  online_at?: string;
 }
 
 interface GameState {
-  loadouts: { [slotIndex: number]: Loadout };
-  bans: { [slotIndex: number]: string[] };
+  loadouts: { [userId: string]: Loadout };
+  bans: { [userId: string]: string[] };
+  permissions: { 
+    allowOthersRerollMe: { [userId: string]: boolean };
+    allowOthersDeploy: { [userId: string]: boolean };
+  };
+}
+
+interface HistoryItem {
+  timestamp: number;
+  loadouts: { [userId: string]: Loadout };
 }
 
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -38,19 +49,47 @@ const ApexLegends: React.FC = () => {
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('apex_player_name') || '');
   const [connectionStatus, setConnectionStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
   const [channel, setChannel] = useState<any>(null); // RealtimeChannel
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [notification, setNotification] = useState<{message: string, type: 'error' | 'info'} | null>(null);
 
   // --- Game State ---
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [myId, setMyId] = useState<string>('');
   const [gameState, setGameState] = useState<GameState>({
     loadouts: {},
-    bans: {}
+    bans: {},
+    permissions: { 
+      allowOthersRerollMe: {}, // Defaults to false
+      allowOthersDeploy: {}    // Defaults to false
+    }
   });
 
   const [isGlobalRolling, setIsGlobalRolling] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState<{type: 'REROLL' | 'DISBAND' | 'LEAVE', title: string, message: string} | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState(false); // Config modal for permissions
+  
+  // --- New Features State ---
+  const [isMuted, setIsMuted] = useState(() => localStorage.getItem('apex_muted') === 'true');
+  const [rollHistory, setRollHistory] = useState<HistoryItem[]>([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  useEffect(() => {
+     soundManager.setMute(isMuted);
+     localStorage.setItem('apex_muted', String(isMuted));
+  }, [isMuted]);
 
   // --- Helpers ---
+  const updateGameState = (newState: GameState, recordHistory: boolean = true) => {
+      setGameState(newState);
+      if (recordHistory) {
+          setRollHistory(prev => [
+            { timestamp: Date.now(), loadouts: newState.loadouts },
+            ...prev
+          ].slice(0, 5));
+      }
+      return newState;
+  };
+
   const handlePoolToggle = (legendId: string) => {
     const newExcludes = myExcludes.includes(legendId) 
        ? myExcludes.filter(id => id !== legendId)
@@ -59,40 +98,67 @@ const ApexLegends: React.FC = () => {
     localStorage.setItem('apex_user_excludes', JSON.stringify(newExcludes));
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
+    if (!playerName.trim()) {
+        setNotification({ message: "Please enter your nickname first.", type: 'error' });
+        return;
+    }
     const code = generateRoomId();
     setRoomId(code);
-    joinRoom(code);
+    setSetupMode('CREATE');
+    await connectToRoom(code, 'CREATE');
   };
   
-  const handleJoinClick = () => {
-     if(!roomId) return;
-     joinRoom(roomId.toUpperCase());
+  const handleJoinClick = async () => {
+     if(!roomId || !playerName.trim()) {
+         setNotification({ message: "Please enter Room ID and Nickname.", type: 'error' });
+         return;
+     }
+     setSetupMode('JOIN');
+     await connectToRoom(roomId.toUpperCase(), 'JOIN');
   }
 
-  const joinRoom = async (code: string) => {
-    if (!playerName) return;
+  const connectToRoom = async (code: string, mode: 'JOIN' | 'CREATE') => {
+    setIsProcessing(true);
     localStorage.setItem('apex_player_name', playerName);
-    setConnectionStatus('CONNECTING');
 
-    // Create channel
+    if (channel) supabase.removeChannel(channel);
+
     const newChannel = supabase.channel(`apex-room:${code}`, {
       config: { presence: { key: code } }
     });
     
-    // Generate my session ID
-    const tempId = Math.random().toString(36).substring(7);
+    // Generate my session ID (PERSISTENT)
+    const storageKeyId = `apex_user_id_${code}`;
+    let tempId = sessionStorage.getItem(storageKeyId);
+    if (!tempId) {
+       tempId = Math.random().toString(36).substring(7);
+       sessionStorage.setItem(storageKeyId, tempId);
+    }
     setMyId(tempId);
 
     newChannel
-      .on('broadcast', { event: 'GAME_ROLL_START' }, (payload) => {
-        setIsGlobalRolling(true);
-        // Safety timeout
-        setTimeout(() => setIsGlobalRolling(false), 5000);
+      .on('broadcast', { event: 'GAME_ROLL_START' }, () => {
+          setIsGlobalRolling(true);
+          soundManager.playStart();
       })
       .on('broadcast', { event: 'GAME_UPDATE' }, (payload) => {
         setGameState(payload.payload);
         setIsGlobalRolling(false);
+        soundManager.playSuccess();
+        
+        // Add to history if this looks like a new set (simplistic check: timestamps of events or just push every update)
+        // Better: The payload could carry a "reason" or we can just push every major update. 
+        // For now, let's push every update that results in a full loadout change.
+        setRollHistory(prev => [
+            { timestamp: Date.now(), loadouts: payload.payload.loadouts },
+            ...prev
+        ].slice(0, 5));
+      })
+      .on('broadcast', { event: 'ROOM_CLOSED' }, () => {
+        newChannel.unsubscribe();
+        setNotification({ message: "Squad leader disbanded the lobby.", type: 'info' });
+        setTimeout(() => window.location.reload(), 2000);
       })
       .on('presence', { event: 'sync' }, () => {
         const state = newChannel.presenceState();
@@ -101,15 +167,13 @@ const ApexLegends: React.FC = () => {
              presences.forEach((p: any) => rawPlayers.push(p));
         });
         
-        // Map to our structure
-        // We recalculate slots based on join order "online_at" to be stable
-        // This fixes the "SLOT 2 / SLOT 3" issue by dynamically assigning slots based on who is present
+        // Sort by online_at to stabilize slots
         const sorted = rawPlayers.sort((a, b) => (a.online_at || '').localeCompare(b.online_at || ''));
         
         const mapped = sorted.map((p, idx) => ({
              id: p.userId,
              name: p.user_name,
-             slotIndex: idx % 3, // Simple cyclical assignment, 0,1,2,0..
+             slotIndex: idx % 3,
              excludedLegends: p.excluded_ids || []
         }));
         
@@ -117,16 +181,39 @@ const ApexLegends: React.FC = () => {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-           setConnectionStatus('CONNECTED');
-           setView('LOBBY');
+           // Synchronize/Populate presence check
+           await new Promise(r => setTimeout(r, 1200)); 
            
-           // Track my presence
+           const state = newChannel.presenceState();
+           let userCount = 0;
+           Object.values(state).forEach((p: any) => userCount += p.length);
+           
+           // JOIN VALIDATION: If I am joining but room is empty (meaning Host isn't there)
+           // If userCount is 0, it means NO ONE is there (even me, since I haven't tracked).
+           if (mode === 'JOIN' && userCount === 0) {
+              newChannel.unsubscribe();
+              setIsProcessing(false);
+              setNotification({ message: `Room #${code} not found or inactive.`, type: 'error' });
+              return;
+           }
+
+           const storageKey = `apex_join_time_${code}`;
+           let joinTime = sessionStorage.getItem(storageKey);
+           if (!joinTime) {
+             joinTime = new Date().toISOString();
+             sessionStorage.setItem(storageKey, joinTime);
+           }
+
            await newChannel.track({
              user_name: playerName,
              userId: tempId,
-             online_at: new Date().toISOString(),
+             online_at: joinTime,
              excluded_ids: myExcludes
            });
+
+           setConnectionStatus('CONNECTED');
+           setView('LOBBY');
+           setIsProcessing(false);
         }
       });
 
@@ -135,100 +222,157 @@ const ApexLegends: React.FC = () => {
 
   // --- Logic ---
   
-  const getUnavailableLegendsForSlot = (targetSlot: number, currentLoadouts: any, currentBans: any) => {
+  const getUnavailableLegendsForSlot = (targetUserId: string, currentLoadouts: any, currentBans: any) => {
      // 1. Slot's bans
      // 2. Slot's owner exclusions
      // 3. Other slots' CURRENT picks (to ensure uniqueness)
      
-     const bans = currentBans[targetSlot] || [];
+     const bans = currentBans[targetUserId] || [];
      
-     const playerAtSlot = players.find(p => p.slotIndex === targetSlot);
-     const excludes = playerAtSlot?.excludedLegends || [];
+     const player = players.find(p => p.id === targetUserId);
+     const excludes = player?.excludedLegends || [];
      
      const otherPicks = Object.keys(currentLoadouts)
-        .map(Number)
-        .filter(slot => slot !== targetSlot)
-        .map(slot => currentLoadouts[slot]?.legend?.id)
+        .filter(uid => uid !== targetUserId)
+        .map(uid => currentLoadouts[uid]?.legend?.id)
         .filter(Boolean);
         
      return [...new Set([...bans, ...excludes, ...otherPicks])];
   };
 
-  const handleRandomize = (slotIndex: number) => {
-    const unavailableLegends = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, gameState.bans);
-    
-    // Get player specific excludes (for weapons)
-    const playerAtSlot = players.find(p => p.slotIndex === slotIndex);
-    const playerExcludes = playerAtSlot?.excludedLegends || [];
+const handleIndividualReroll = (userId: string) => {
+    const player = players.find(p => p.id === userId);
+    if (!player) return;
+
+    const unavailableLegends = getUnavailableLegendsForSlot(player.id, gameState.loadouts, gameState.bans);
+    const playerExcludes = player.excludedLegends || [];
 
     const newLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
     
-    // Check if newLoadout is valid? getRandomLoadout handles fallback
 
     const newState = {
       ...gameState,
-      loadouts: { ...gameState.loadouts, [slotIndex]: newLoadout }
+      loadouts: { ...gameState.loadouts, [player.id]: newLoadout }
     };
     
-    setGameState(newState);
+    updateGameState(newState, true);
     channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
   };
 
-  const handleGlobalRerollRequest = () => {
-     setShowConfirmModal(true);
-  };
-
-  const executeGlobalReroll = () => {
-    setShowConfirmModal(false);
-    
-    // 1. Notify everyone to start rolling animation
-    channel?.send({ type: 'broadcast', event: 'GAME_ROLL_START', payload: {} });
-    setIsGlobalRolling(true);
-
-    // 2. Wait for animation duration (syncs the "reveal" roughly)
-    setTimeout(() => {
-      // Pick logic
-      const slots = [0, 1, 2];
-      const tempLoadouts: any = {};
-      const newBans = gameState.bans; // Keep existing bans
-
-      slots.forEach(slot => {
-          const unavailableLegends = getUnavailableLegendsForSlot(slot, tempLoadouts, newBans);
-          
-          const playerAtSlot = players.find(p => p.slotIndex === slot);
-          const playerExcludes = playerAtSlot?.excludedLegends || [];
-
-          const loadout = getRandomLoadout(unavailableLegends, playerExcludes);
-          tempLoadouts[slot] = loadout;
-      });
-      
-      const newState = { ...gameState, loadouts: tempLoadouts };
-      setGameState(newState);
-      channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
-      setIsGlobalRolling(false);
-    }, 2000); // 2 Seconds of "Searching..."
+  const handleDisbandRequest = () => {
+     setConfirmModalData({
+        type: 'DISBAND',
+        title: 'DISBAND SQUAD?',
+        message: 'This will disconnect all players and close the room.'
+     });
   };
   
+  const handleGlobalRerollRequest = () => {
+     setConfirmModalData({
+        type: 'REROLL',
+        title: 'FULL SQUAD REROLL?',
+        message: 'This will randomize loadouts for ALL players.'
+     });
+  };
+
+  const handleBackClick = () => {
+     setConfirmModalData({
+        type: 'LEAVE',
+        title: 'LEAVE SQUAD?',
+        message: 'You will be removed from the team.'
+     });
+  }
+
+  const executeAction = () => {
+      if (!confirmModalData) return;
+      const { type } = confirmModalData;
+      setConfirmModalData(null);
+      
+      if (type === 'DISBAND') {
+          channel?.send({ type: 'broadcast', event: 'ROOM_CLOSED', payload: {} });
+          window.location.reload();
+      } else if (type === 'LEAVE') {
+          if (channel) {
+             channel.unsubscribe();
+             setChannel(null);
+          }
+          setView('SETUP');
+          setConnectionStatus('DISCONNECTED');
+          setPlayers([]);
+          setRoomId(''); // Clear room code to truly reset
+      } else if (type === 'REROLL') {
+          channel?.send({ type: 'broadcast', event: 'GAME_ROLL_START', payload: {} });
+          setIsGlobalRolling(true);
+          soundManager.playStart();
+
+          setTimeout(() => {
+             const tempLoadouts: any = {};
+             players.forEach(p => {
+                 const unavailable = getUnavailableLegendsForSlot(p.id, tempLoadouts, gameState.bans);
+                 tempLoadouts[p.id] = getRandomLoadout(unavailable, p.excludedLegends || []);
+             });
+             
+             const newState = { ...gameState, loadouts: tempLoadouts };
+             updateGameState(newState, true);
+             channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
+             setIsGlobalRolling(false);
+             soundManager.playSuccess();
+          }, 2500);
+      }
+  };
+
   const handleBan = (slotIndex: number, legendId: string) => {
-     // Classic Ban Logic
-     const currentBans = gameState.bans[slotIndex] || [];
+     const player = players.find(p => p.slotIndex === slotIndex);
+     if (!player) return;
+
+     const currentBans = gameState.bans[player.id] || [];
      const newBans = [...currentBans, legendId];
      
      const newState = { 
         ...gameState, 
-        bans: { ...gameState.bans, [slotIndex]: newBans } 
+        bans: { ...gameState.bans, [player.id]: newBans } 
      };
      
      // Auto reroll this slot to clear bans
-     const unavailableLegends = getUnavailableLegendsForSlot(slotIndex, gameState.loadouts, newState.bans);
-     const playerAtSlot = players.find(p => p.slotIndex === slotIndex);
-     const playerExcludes = playerAtSlot?.excludedLegends || [];
+     const unavailableLegends = getUnavailableLegendsForSlot(player.id, gameState.loadouts, newState.bans);
+     const playerExcludes = player.excludedLegends || [];
      
-     newState.loadouts[slotIndex] = getRandomLoadout(unavailableLegends, playerExcludes);
+     newState.loadouts[player.id] = getRandomLoadout(unavailableLegends, playerExcludes);
 
+     updateGameState(newState, true);
+     channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
+  };
+
+  const handleTogglePermission = (type: 'REROLL' | 'DEPLOY') => {
+     const mySlot = players.find(p => p.id === myId)?.slotIndex;
+     if (mySlot === undefined || !myId) return;
+
+     const newPerms = { ...gameState.permissions };
+     
+     if (type === 'REROLL') {
+       newPerms.allowOthersRerollMe = {
+          ...newPerms.allowOthersRerollMe,
+          [myId]: !newPerms.allowOthersRerollMe?.[myId]
+       };
+     } else {
+       newPerms.allowOthersDeploy = {
+          ...newPerms.allowOthersDeploy,
+          [myId]: !newPerms.allowOthersDeploy?.[myId]
+       };
+     }
+     
+     const newState = { ...gameState, permissions: newPerms };
      setGameState(newState);
      channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
   };
+  
+  const myPlayer = players.find(p => p.id === myId);
+  const mySlot = myPlayer?.slotIndex;
+  const isHost = mySlot === 0;
+  
+  const hostId = players.find(p => p.slotIndex === 0)?.id;
+  const hostAllowDeploy = hostId ? (gameState.permissions?.allowOthersDeploy?.[hostId] || false) : false;
+  const canIDeploy = isHost || hostAllowDeploy;
 
   // --- Render ---
 
@@ -236,6 +380,42 @@ const ApexLegends: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-900/30 via-gray-900 to-black pointer-events-none" />
+
+        {/* Global Loading Overlay */}
+       <AnimatePresence>
+         {isProcessing && (
+            <motion.div 
+               initial={{ opacity: 0 }} 
+               animate={{ opacity: 1 }} 
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center flex-col gap-4"
+            >
+               <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
+               <p className="text-xl font-bold uppercase tracking-widest animate-pulse">Establishing Link...</p>
+            </motion.div>
+         )}
+       </AnimatePresence>
+
+       {/* Notification Toast/Modal */}
+       <AnimatePresence>
+          {notification && (
+             <motion.div 
+               initial={{ y: -100, opacity: 0 }}
+               animate={{ y: 0, opacity: 1 }}
+               exit={{ y: -100, opacity: 0 }}
+               className="fixed top-6 left-1/2 -translate-x-1/2 z-[90] bg-gray-800 border-l-4 border-red-500 px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 min-w-[300px]"
+             >
+                <div className={`p-2 rounded-full ${notification.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                   {notification.type === 'error' ? '!' : 'i'}
+                </div>
+                <div className="flex-1">
+                   <p className="font-bold text-sm uppercase">{notification.type === 'error' ? 'Connection Error' : 'System Update'}</p>
+                   <p className="text-xs text-gray-400">{notification.message}</p>
+                </div>
+                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white">✕</button>
+             </motion.div>
+          )}
+       </AnimatePresence>
 
         <motion.div 
            initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -296,7 +476,7 @@ const ApexLegends: React.FC = () => {
                  />
                  <button 
                     onClick={handleJoinClick}
-                    disabled={!playerName || !roomId}
+                    disabled={isProcessing || !playerName || !roomId}
                     className="w-full bg-white text-black hover:bg-gray-200 font-black uppercase py-4 rounded-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                  >
                     Join Squad
@@ -309,7 +489,7 @@ const ApexLegends: React.FC = () => {
                  </div>
                  <button 
                     onClick={handleCreateRoom}
-                    disabled={!playerName}
+                    disabled={isProcessing || !playerName}
                     className="w-full bg-red-600 hover:bg-red-500 text-white font-black uppercase py-4 rounded-xl shadow-lg shadow-red-900/40 transition-transform active:scale-95 disabled:opacity-50"
                  >
                     Launch Lobby
@@ -405,15 +585,50 @@ const ApexLegends: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 lg:p-6 flex flex-col font-sans">
-       {/* Background */}
        <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/10 via-gray-900 to-black pointer-events-none -z-10" />
        
+       {/* Global Loading Overlay */}
+       <AnimatePresence>
+         {isProcessing && (
+            <motion.div 
+               initial={{ opacity: 0 }} 
+               animate={{ opacity: 1 }} 
+               exit={{ opacity: 0 }}
+               className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center flex-col gap-4"
+            >
+               <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
+               <p className="text-xl font-bold uppercase tracking-widest animate-pulse">Establishing Link...</p>
+            </motion.div>
+         )}
+       </AnimatePresence>
+
+       {/* Notification Toast/Modal */}
+       <AnimatePresence>
+          {notification && (
+             <motion.div 
+               initial={{ y: -100, opacity: 0 }}
+               animate={{ y: 0, opacity: 1 }}
+               exit={{ y: -100, opacity: 0 }}
+               className="fixed top-6 left-1/2 -translate-x-1/2 z-[90] bg-gray-800 border-l-4 border-red-500 px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 min-w-[300px]"
+             >
+                <div className={`p-2 rounded-full ${notification.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                   {notification.type === 'error' ? '!' : 'i'}
+                </div>
+                <div className="flex-1">
+                   <p className="font-bold text-sm uppercase">{notification.type === 'error' ? 'Connection Error' : 'System Update'}</p>
+                   <p className="text-xs text-gray-400">{notification.message}</p>
+                </div>
+                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white">✕</button>
+             </motion.div>
+          )}
+       </AnimatePresence>
+
        {/* Header */}
        <header className="flex flex-col md:flex-row justify-between items-center mb-6 bg-black/40 p-4 rounded-2xl border border-white/5 backdrop-blur-md gap-4">
           <div className="flex items-center gap-4">
-            <Link to="/" className="bg-gray-800 p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white">
+            <button onClick={handleBackClick} className="bg-gray-800 p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white">
                <ArrowLeft size={24} />
-            </Link>
+            </button>
             <div>
                <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
                   <span className="text-gray-500">#</span>{roomId}
@@ -426,9 +641,35 @@ const ApexLegends: React.FC = () => {
                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
                  {players.length} Active
               </span>
+              
+              {players.find(p => p.id === myId)?.slotIndex === 0 && (
+                <button 
+                  onClick={handleDisbandRequest}
+                  className="px-4 py-3 bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-800 font-bold uppercase text-xs rounded-xl transition-all"
+                >
+                  Disband
+                </button>
+              )}
+
+              <button 
+                onClick={() => setShowHistoryModal(true)}
+                className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
+                title="Roll History"
+              >
+                <History size={20} />
+              </button>
+
+              <button 
+                onClick={() => setShowOptionsModal(true)}
+                className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Settings size={20} />
+              </button>
+
               <button 
                 onClick={handleGlobalRerollRequest}
-                className="px-6 py-3 bg-gradient-to-r from-red-600 to-orange-600 text-white font-black uppercase text-sm rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                disabled={!canIDeploy}
+                className={`px-6 py-3 font-black uppercase text-sm rounded-xl shadow-lg transition-all ${ canIDeploy ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:brightness-110 active:scale-95' : 'bg-gray-800 text-gray-500 cursor-not-allowed grayscale'}`}
               >
                 Deploy Team Randomizer
               </button>
@@ -448,8 +689,9 @@ const ApexLegends: React.FC = () => {
              // Find player in this slot
              const player = players.find(p => p.slotIndex === slotIndex);
              const isMe = !!(player && myId && player.id === myId);
-             const isOccupied = !!player;
              
+             const canIRerollThisSlot = isMe || (player ? (gameState.permissions?.allowOthersRerollMe?.[player.id] === true) : false);
+
              return (
                <motion.div 
                   key={slotIndex} 
@@ -457,20 +699,26 @@ const ApexLegends: React.FC = () => {
                     hidden: { opacity: 0, y: 50 },
                     visible: { opacity: 1, y: 0 }
                   }}
-                  className="relative group"
+                  className={`relative group transition-all duration-300 rounded-[2rem] ${isMe ? 'z-10 scale-[1.03] ring-2 ring-yellow-400/70 shadow-[0_0_50px_-10px_rgba(250,204,21,0.2)] my-2 lg:my-0' : 'opacity-90 hover:opacity-100'}`}
                >
-                  <div className="absolute -inset-1 bg-gradient-to-b from-gray-700 to-gray-900 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+                  {!isMe && <div className="absolute -inset-1 bg-gradient-to-b from-gray-700 to-gray-900 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>}
+                  {isMe && <div className="absolute -inset-1 bg-gradient-to-b from-yellow-500/20 to-orange-500/20 rounded-[2rem] blur opacity-50 animate-pulse"></div>}
+                  
                   <LegendCard 
                     playerIndex={slotIndex}
                     playerName={player?.name || `Waiting for Player...`}
-                    loadout={gameState.loadouts[slotIndex] || null}
-                    isCurrentUser={isMe} 
-                    onReroll={() => handleRandomize(slotIndex)}
-                    onExclude={(id) => handleBan(slotIndex, id)}
+                    loadout={player ? (gameState.loadouts[player.id] || null) : null}
+                    onReroll={() => player && handleIndividualReroll(player.id)}
+                    showReroll={!!player && canIRerollThisSlot}
+                    onExclude={(id) => player && handleBan(slotIndex, id)}
+                    isMe={isMe}
                     isRolling={isGlobalRolling}
+                    isMuted={isMuted}
                   />
-                  {!isOccupied && (
-                     <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-[2px] rounded-[2rem] flex items-center justify-center">
+
+                  {/* Empty Slot Indicator */}
+                  {!player && (
+                     <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-[2rem] flex items-center justify-center">
                         <div className="text-gray-500 font-bold uppercase tracking-widest text-sm border border-gray-600 px-4 py-2 rounded-full">
                            Open Slot {slotIndex + 1}
                         </div>
@@ -481,8 +729,120 @@ const ApexLegends: React.FC = () => {
           })}
        </motion.main>
 
+       {/* HISTORY MODAL */}
+       {showHistoryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+                 <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
+                     <div>
+                       <h2 className="text-xl font-bold uppercase flex items-center gap-2">
+                           <History size={24} className="text-gray-400"/> Roll History
+                       </h2>
+                       <p className="text-xs text-gray-500 uppercase tracking-widest">Last 5 deploys</p>
+                     </div>
+                     <button onClick={() => setShowHistoryModal(false)} className="bg-gray-800 hover:bg-gray-700 p-2 rounded-full transition-colors">✕</button>
+                 </div>
+                 
+                 <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                    {rollHistory.length === 0 ? (
+                        <div className="text-center py-20 text-gray-600 font-mono">NO DATA RECORDED</div>
+                    ) : (
+                        rollHistory.map((item, idx) => (
+                           <div key={item.timestamp} className="bg-gray-800/50 p-4 rounded-xl border border-gray-700/50">
+                               <div className="flex justify-between items-center mb-3">
+                                   <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">#{idx + 1} • {new Date(item.timestamp).toLocaleTimeString()}</span>
+                               </div>
+                               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                  {[0,1,2].map(slot => {
+                                      const p = players.find(pl => pl.slotIndex === slot);
+                                      if (!p) return null;
+                                      const l = item.loadouts[p.id];
+                                      if (!l) return (
+                                          <div key={slot} className="bg-gray-900/50 p-2 rounded-lg text-center text-xs text-gray-600">
+                                              {p.name}: No Data
+                                          </div>
+                                      );
+                                      return (
+                                          <div key={slot} className="bg-gray-900 p-3 rounded-lg flex items-center gap-3 border border-gray-800">
+                                              <img src={l.legend.icon ? `/icons/${l.legend.icon}` : `/legends/${l.legend.image}`} className="w-8 h-8 rounded bg-gray-800 object-cover" />
+                                              <div className="overflow-hidden">
+                                                  <div className="font-bold text-xs text-white uppercase truncate">{l.legend.name}</div>
+                                                  <div className="text-[10px] text-gray-400 truncate">{l.primary.name} / {l.secondary.name}</div>
+                                              </div>
+                                          </div>
+                                      );
+                                  })}
+                               </div>
+                           </div>
+                        ))
+                    )}
+                 </div>
+             </div>
+          </div>
+       )}
+
+       {/* OPTIONS MODAL */}
+       {showOptionsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+             <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold uppercase">Squad Options</h2>
+                <button onClick={() => setShowOptionsModal(false)} className="text-gray-400 hover:text-white">✕</button>
+             </div>
+             
+             <div className="space-y-4">
+               {/* Toggle 0: Sound */}
+               <div className="flex justify-between items-center bg-gray-800 p-4 rounded-xl">
+                  <div>
+                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                       {isMuted ? <VolumeX size={16}/> : <Volume2 size={16}/>} Sound Effects
+                    </h3>
+                    <p className="text-xs text-gray-500">Enable/Disable interface sounds.</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsMuted(!isMuted)}
+                    className={`w-12 h-6 rounded-full p-1 transition-colors ${!isMuted ? 'bg-blue-500' : 'bg-gray-600'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full transition-transform ${!isMuted ? 'translate-x-6' : ''}`} />
+                  </button>
+               </div>
+
+               {/* Toggle 1: Allow others to reroll ME */}
+               <div className="flex justify-between items-center bg-gray-800 p-4 rounded-xl">
+                  <div>
+                    <h3 className="font-bold text-white text-sm">Allow Team to Reroll Me</h3>
+                    <p className="text-xs text-gray-500">Teammates can randomize your legend.</p>
+                  </div>
+                  <button 
+                    onClick={() => handleTogglePermission('REROLL')}
+                    className={`w-12 h-6 rounded-full p-1 transition-colors ${gameState.permissions?.allowOthersRerollMe?.[myId] ? 'bg-green-500' : 'bg-gray-600'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.permissions?.allowOthersRerollMe?.[myId] ? 'translate-x-6' : ''}`} />
+                  </button>
+               </div>
+
+               {/* Toggle 2: HOST ONLY - Allow others to Deploy */}
+               {isHost && (
+                 <div className="flex justify-between items-center bg-gray-800 p-4 rounded-xl border border-red-900/30">
+                    <div>
+                      <h3 className="font-bold text-white text-sm">Grant Deploy Access</h3>
+                      <p className="text-xs text-gray-500">Allow anyone to trigger global randomize.</p>
+                    </div>
+                    <button 
+                      onClick={() => handleTogglePermission('DEPLOY')}
+                      className={`w-12 h-6 rounded-full p-1 transition-colors ${gameState.permissions?.allowOthersDeploy?.[myId] ? 'bg-red-500' : 'bg-gray-600'}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.permissions?.allowOthersDeploy?.[myId] ? 'translate-x-6' : ''}`} />
+                    </button>
+                 </div>
+               )}
+             </div>
+          </div>
+        </div>
+       )}
+
        {/* CONFIRMATION MODAL */}
-       {showConfirmModal && (
+       {confirmModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
@@ -492,21 +852,21 @@ const ApexLegends: React.FC = () => {
             <div className="absolute inset-0 bg-red-600/10 animate-pulse pointer-events-none" />
             
             <h3 className="text-2xl font-black text-white uppercase text-center mb-4 tracking-tighter">
-              Full Squad Reroll?
+              {confirmModalData.title}
             </h3>
             <p className="text-gray-400 text-center text-sm mb-8 font-mono">
-              This action will randomize loadouts for ALL players. Current selections will be lost.
+              {confirmModalData.message}
             </p>
             
             <div className="flex gap-4">
               <button 
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() => setConfirmModalData(null)}
                 className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-colors"
               >
                 Cancel
               </button>
               <button 
-                onClick={executeGlobalReroll}
+                onClick={executeAction}
                 className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold uppercase rounded-xl shadow-lg shadow-red-900/50 transition-transform active:scale-95"
               >
                 Confirm
