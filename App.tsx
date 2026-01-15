@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Analytics } from "@vercel/analytics/react";
 import Home from './pages/Home';
 import ApexLegends from './pages/ApexLegends';
@@ -12,6 +12,8 @@ const App: React.FC = () => {
         <Route path="/" element={<Home />} />
         <Route path="/apex" element={<ApexLegends />} />
         <Route path="/squads" element={<SquadAssembler />} />
+        {/* Redirect unknown routes to Home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Analytics />
     </Router>
