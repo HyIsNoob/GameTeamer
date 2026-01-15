@@ -1,9 +1,10 @@
 import { APEX_LEGENDS, APEX_WEAPONS, Legend, Weapon } from './apexData';
 
 export interface Loadout {
-  legend: Legend;
-  primary: Weapon;
-  secondary: Weapon;
+  legend?: Legend;
+  primary?: Weapon;
+  secondary?: Weapon;
+  role?: string; // For 'ROLE' mode
 }
 
 export const getRandomLoadout = (excludedLegendIds: string[] = [], excludedWeaponIds: string[] = []): Loadout => {

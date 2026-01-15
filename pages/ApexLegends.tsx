@@ -17,7 +17,16 @@ interface PlayerState {
   online_at?: string;
 }
 
+interface ChatMessage {
+    id: string;
+    sender: string;
+    text: string;
+    timestamp: number;
+    isSystem?: boolean;
+}
+
 interface GameState {
+  mode: 'FULL' | 'LEGENDS' | 'ROLE';
   loadouts: { [userId: string]: Loadout };
   bans: { [userId: string]: string[] };
   permissions: { 
@@ -56,6 +65,7 @@ const ApexLegends: React.FC = () => {
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [myId, setMyId] = useState<string>('');
   const [gameState, setGameState] = useState<GameState>({
+    mode: 'FULL',
     loadouts: {},
     bans: {},
     permissions: { 
@@ -72,6 +82,18 @@ const ApexLegends: React.FC = () => {
   const [isMuted, setIsMuted] = useState(() => localStorage.getItem('apex_muted') === 'true');
   const [rollHistory, setRollHistory] = useState<HistoryItem[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  
+  // Chat
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showChat, setShowChat] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+     if (showChat) {
+         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+     }
+  }, [chatMessages, showChat]);
 
   useEffect(() => {
      soundManager.setMute(isMuted);
@@ -88,6 +110,30 @@ const ApexLegends: React.FC = () => {
           ].slice(0, 5));
       }
       return newState;
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      if (!newMessage.trim() || !channel) return;
+
+      const msg: ChatMessage = {
+          id: Math.random().toString(36).substr(2, 9),
+          sender: playerName || 'Unknown',
+          text: newMessage.trim(),
+          timestamp: Date.now()
+      };
+
+      // Optimistic update
+      setChatMessages(prev => [...prev, msg]);
+      setNewMessage('');
+
+      await channel.send({ type: 'broadcast', event: 'CHAT', payload: msg });
+  };
+
+  const handleSetGameMode = (mode: 'FULL' | 'LEGENDS' | 'ROLE') => {
+      const newState = { ...gameState, mode };
+      setGameState(newState);
+      channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
   };
 
   const handlePoolToggle = (legendId: string) => {
@@ -143,17 +189,29 @@ const ApexLegends: React.FC = () => {
           soundManager.playStart();
       })
       .on('broadcast', { event: 'GAME_UPDATE' }, (payload) => {
-        setGameState(payload.payload);
-        setIsGlobalRolling(false);
-        soundManager.playSuccess();
-        
-        // Add to history if this looks like a new set (simplistic check: timestamps of events or just push every update)
-        // Better: The payload could carry a "reason" or we can just push every major update. 
-        // For now, let's push every update that results in a full loadout change.
-        setRollHistory(prev => [
-            { timestamp: Date.now(), loadouts: payload.payload.loadouts },
-            ...prev
-        ].slice(0, 5));
+        setGameState(prevState => {
+           // Prevent ghost updates (sound/history) if data hasn't changed.
+           // This often happens on tab wake-up or re-subscription.
+           const isDifferent = JSON.stringify(prevState.loadouts) !== JSON.stringify(payload.payload.loadouts);
+           
+           if (isDifferent) {
+              setIsGlobalRolling(false);
+              setTimeout(() => soundManager.playSuccess(), 800);
+              setRollHistory(prev => [
+                  { timestamp: Date.now(), loadouts: payload.payload.loadouts },
+                  ...prev
+              ].slice(0, 5));
+           }
+           
+           // Always update state to ensure synchronization, but side-effects (sound/history) are gated
+           return payload.payload;
+        });
+      })
+      .on('broadcast', { event: 'CHAT' }, (payload) => {
+          setChatMessages(prev => [...prev, payload.payload]);
+          if (!showChat) {
+             // Only show notification if quite new
+          }
       })
       .on('broadcast', { event: 'ROOM_CLOSED' }, () => {
         newChannel.unsubscribe();
@@ -181,6 +239,9 @@ const ApexLegends: React.FC = () => {
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+           setConnectionStatus('CONNECTED');
+           setNotification(null); // Clear any previous error notification on successful reconnect
+
            // Synchronize/Populate presence check
            await new Promise(r => setTimeout(r, 1200)); 
            
@@ -210,10 +271,14 @@ const ApexLegends: React.FC = () => {
              online_at: joinTime,
              excluded_ids: myExcludes
            });
-
-           setConnectionStatus('CONNECTED');
+           
+           
            setView('LOBBY');
            setIsProcessing(false);
+        } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
+            // Do not immediately redirect or clear view, just warn. Auto-reconnect often works.
+            setConnectionStatus('CONNECTING');
+            setNotification({ message: "Connection lost. Reconnecting...", type: 'error' });
         }
       });
 
@@ -307,16 +372,35 @@ const handleIndividualReroll = (userId: string) => {
 
           setTimeout(() => {
              const tempLoadouts: any = {};
+             
              players.forEach(p => {
-                 const unavailable = getUnavailableLegendsForSlot(p.id, tempLoadouts, gameState.bans);
-                 tempLoadouts[p.id] = getRandomLoadout(unavailable, p.excludedLegends || []);
+                 let loadout: Loadout;
+                 
+                 if (gameState.mode === 'ROLE') {
+                     const roles = ['Assault', 'Skirmisher', 'Recon', 'Support', 'Controller'];
+                     const randomRole = roles[Math.floor(Math.random() * roles.length)];
+                     loadout = { role: randomRole };
+                 } else {
+                     // Check bans only if picking legends
+                     const unavailable = getUnavailableLegendsForSlot(p.id, tempLoadouts, gameState.bans);
+                     const fullLoadout = getRandomLoadout(unavailable, p.excludedLegends || []);
+                     
+                     if (gameState.mode === 'LEGENDS') {
+                         loadout = { legend: fullLoadout.legend };
+                     } else {
+                         // FULL
+                         loadout = fullLoadout;
+                     }
+                 }
+                 
+                 tempLoadouts[p.id] = loadout;
              });
              
              const newState = { ...gameState, loadouts: tempLoadouts };
              updateGameState(newState, true);
              channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
              setIsGlobalRolling(false);
-             soundManager.playSuccess();
+             setTimeout(() => soundManager.playSuccess(), 800);
           }, 2500);
       }
   };
@@ -714,6 +798,7 @@ const handleIndividualReroll = (userId: string) => {
                     isMe={isMe}
                     isRolling={isGlobalRolling}
                     isMuted={isMuted}
+                    mode={gameState.mode}
                   />
 
                   {/* Empty Slot Indicator */}
@@ -791,6 +876,38 @@ const handleIndividualReroll = (userId: string) => {
              </div>
              
              <div className="space-y-4">
+               {/* Mode Selection (Host Only) */}
+               {isHost && (
+                   <div className="bg-gray-800 p-4 rounded-xl border border-yellow-500/20">
+                      <h3 className="font-bold text-white text-sm mb-3">Game Mode</h3>
+                      <div className="grid grid-cols-3 gap-2">
+                          <button 
+                             onClick={() => handleSetGameMode('FULL')}
+                             className={`p-2 rounded-lg text-xs font-bold uppercase transition-colors border ${gameState.mode === 'FULL' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'}`}
+                          >
+                             Full
+                          </button>
+                          <button 
+                             onClick={() => handleSetGameMode('LEGENDS')}
+                             className={`p-2 rounded-lg text-xs font-bold uppercase transition-colors border ${gameState.mode === 'LEGENDS' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'}`}
+                          >
+                             Legends
+                          </button>
+                          <button 
+                             onClick={() => handleSetGameMode('ROLE')}
+                             className={`p-2 rounded-lg text-xs font-bold uppercase transition-colors border ${gameState.mode === 'ROLE' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'}`}
+                          >
+                             Role
+                          </button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-2">
+                        {gameState.mode === 'FULL' && "Randomizes everything: Legend and Weapons."}
+                        {gameState.mode === 'LEGENDS' && "Randomizes Legend only. Weapons are free choice."}
+                        {gameState.mode === 'ROLE' && "Randomizes Class Role only. You pick Legend & Guns."}
+                      </p>
+                   </div>
+               )}
+
                {/* Toggle 0: Sound */}
                <div className="flex justify-between items-center bg-gray-800 p-4 rounded-xl">
                   <div>
@@ -839,6 +956,78 @@ const handleIndividualReroll = (userId: string) => {
              </div>
           </div>
         </div>
+       )}
+
+       {/* CHAT WIDGET */}
+       {!showChat ? (
+          <button 
+             onClick={() => setShowChat(true)}
+             className="fixed bottom-6 right-6 z-40 bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-full shadow-2xl border border-white/10 transition-transform hover:scale-110 active:scale-95 group"
+          >
+             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping opacity-75" hidden={!notification} />
+             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" hidden={!notification} />
+             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-blue-400 transition-colors"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+       ) : (
+          <motion.div 
+             initial={{ opacity: 0, y: 20, scale: 0.95 }}
+             animate={{ opacity: 1, y: 0, scale: 1 }}
+             exit={{ opacity: 0, y: 20 }}
+             className="fixed bottom-6 right-6 z-40 w-80 md:w-96 h-[450px] bg-gray-900/95 backdrop-blur-xl border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+          >
+             {/* Chat Header */}
+             <div className="p-3 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center cursor-pointer" onClick={() => setShowChat(false)}>
+                <div className="flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                   <h3 className="font-bold text-sm uppercase tracking-wide">Squad Comms</h3>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); setShowChat(false); }} className="text-gray-400 hover:text-white p-1">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+             </div>
+             
+             {/* Messages */}
+             <div className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-sm scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+                {chatMessages.length === 0 && (
+                   <div className="text-center text-gray-500 text-xs italic mt-10">No transmission detected.</div>
+                )}
+                {chatMessages.map(msg => {
+                   const isMe = msg.sender === playerName;
+                   return (
+                      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                         <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
+                            isMe ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'bg-gray-800 text-gray-200 border border-gray-700'
+                         }`}>
+                            {!isMe && <span className="text-[10px] font-bold text-gray-500 block mb-1 uppercase tracking-wider">{msg.sender}</span>}
+                            <span>{msg.text}</span>
+                         </div>
+                         <span className="text-[9px] text-gray-600 mt-1 px-1">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      </div>
+                   )
+                })}
+                <div ref={chatEndRef} />
+             </div>
+
+             {/* Input */}
+             <form onSubmit={handleSendMessage} className="p-3 bg-gray-800/50 border-t border-gray-700">
+                <div className="flex gap-2">
+                   <input 
+                      type="text" 
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Type message..." 
+                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                   />
+                   <button 
+                      type="submit"
+                      disabled={!newMessage.trim()}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white p-2 rounded-lg transition-colors"
+                   >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                   </button>
+                </div>
+             </form>
+          </motion.div>
        )}
 
        {/* CONFIRMATION MODAL */}

@@ -13,18 +13,24 @@ interface LegendCardProps {
   onExclude?: (id: string) => void;
   isRolling?: boolean;
   isMuted?: boolean;
+  mode?: 'FULL' | 'LEGENDS' | 'ROLE';
 }
 
 const CASINO_NAMES = ["WRAITH", "GIBRALTAR", "LIFELINE", "PATHFINDER", "OCTANE", "WATTSON", "CRYPTO", "REVENANT", "LOBA", "RAMPART", "HORIZON", "FUSE", "VALKYRIE", "SEER", "ASH", "MAD MAGGIE", "NEWCASTLE", "VANTAGE", "CATALYST", "BALLISTIC", "CONDUIT"];
 const CASINO_WEAPONS = ["R-301", "FLATLINE", "HEMLOCK", "R-99", "CAR", "VOLT", "NEMESIS", "HAVOC", "L-STAR", "SPITFIRE", "RAMPAGE", "DEVOTION", "MASTIFF", "EVA-8", "PEACEKEEPER", "MOZAMBIQUE", "WINGMAN", "P2020", "RE-45", "SENTINEL", "CHARGE RIFLE", "LONGBOW", "KRABER", "TRIPLE TAKE", "30-30", "G7 SCOUT", "BOCEK"];
+const CASINO_ROLES = ["ASSAULT", "SKIRMISHER", "RECON", "SUPPORT", "CONTROLLER"];
 
 const LegendCard: React.FC<LegendCardProps> = ({ 
-  playerName, loadout, showReroll, isMe, onReroll, onExclude, isRolling: externalRolling = false, isMuted = false
+  playerName, loadout, showReroll, isMe, onReroll, onExclude, isRolling: externalRolling = false, isMuted = false, mode = 'FULL'
 }) => {
   const [internalRolling, setInternalRolling] = useState(false);
   const [casinoName, setCasinoName] = useState(CASINO_NAMES[0]);
+  const [casinoRole, setCasinoRole] = useState(CASINO_ROLES[0]);
   const [casinoWeapon1, setCasinoWeapon1] = useState(CASINO_WEAPONS[0]);
   const [casinoWeapon2, setCasinoWeapon2] = useState(CASINO_WEAPONS[0]);
+  
+  // Keep track of the previous JSON-stringified loadout to prevent ghost rolls
+  const prevLoadoutRef = React.useRef<string>("");
 
   // Sync mute state
   useEffect(() => {
@@ -32,10 +38,19 @@ const LegendCard: React.FC<LegendCardProps> = ({
   }, [isMuted]);
 
   useEffect(() => {
+    // Only trigger internal rolling animation if the loadout content actually changed
+    // AND it's not the initial mount (unless we want animation on load, but ghost roll issue suggests we don't want replay)
     if (loadout) {
-      setInternalRolling(true);
-      const timer = setTimeout(() => setInternalRolling(false), 800); // 800ms impact delay
-      return () => clearTimeout(timer);
+       const currentStr = JSON.stringify(loadout);
+       if (currentStr !== prevLoadoutRef.current) {
+          prevLoadoutRef.current = currentStr;
+          
+          setInternalRolling(true);
+          const timer = setTimeout(() => setInternalRolling(false), 800); // 800ms impact delay
+          return () => clearTimeout(timer);
+       }
+    } else {
+        prevLoadoutRef.current = "";
     }
   }, [loadout]);
 
@@ -46,6 +61,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
      if (showRolling) {
        const interval = setInterval(() => {
           setCasinoName(CASINO_NAMES[Math.floor(Math.random() * CASINO_NAMES.length)]);
+          setCasinoRole(CASINO_ROLES[Math.floor(Math.random() * CASINO_ROLES.length)]);
           setCasinoWeapon1(CASINO_WEAPONS[Math.floor(Math.random() * CASINO_WEAPONS.length)]);
           setCasinoWeapon2(CASINO_WEAPONS[Math.floor(Math.random() * CASINO_WEAPONS.length)]);
           if (!isMuted) soundManager.playTick(); 
@@ -79,7 +95,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                            transition={{ repeat: Infinity, duration: 0.2, ease: "linear" }}
                            className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 uppercase tracking-tighter filter drop-shadow-glow"
                         >
-                           {casinoName}
+                           {mode === 'ROLE' ? casinoRole : casinoName}
                         </motion.div>
                      </div>
                      <span className="text-yellow-500/50 font-mono text-[10px] animate-pulse">
@@ -88,7 +104,8 @@ const LegendCard: React.FC<LegendCardProps> = ({
                   </div>
 
                    {/* Rolling Weapons */}
-                   <div className="w-full grid grid-cols-2 gap-3 mt-2">
+                   {mode === 'FULL' && (
+                     <div className="w-full grid grid-cols-2 gap-3 mt-2">
                       {[casinoWeapon1, casinoWeapon2].map((w, idx) => (
                            <div key={idx} className="bg-gray-800/50 p-3 rounded-xl flex flex-col items-center border border-gray-700/50">
                                <div className="w-28 h-14 mb-2 flex items-center justify-center opacity-30">
@@ -99,23 +116,36 @@ const LegendCard: React.FC<LegendCardProps> = ({
                                <div className="mt-2 h-1 w-full bg-gray-800 rounded-full" />
                            </div>
                       ))}
-                  </div>
-               </motion.div>
+                  </div>                   )}               </motion.div>
              ) : (
 
               <motion.div 
-                key={loadout?.legend.id}
+                key={loadout?.legend?.id || 'role'}
                 initial={{ opacity: 0, scale: 0.5, filter: "brightness(2)" }}
                 animate={{ opacity: 1, scale: 1, filter: "brightness(1)" }}
                 transition={{ type: "spring", bounce: 0.5, duration: 0.6 }}
                 className="w-full flex-1 flex flex-col items-center justify-between z-10 py-2"
               >
-                 {/* Legend Info */}
-                 <div className="text-center space-y-1 relative">
+                 {/* Legend Info OR Role Info */}
+                 {mode === 'ROLE' && loadout?.role ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4 py-8">
+                        <div className={`w-36 h-36 rounded-full flex items-center justify-center border-4 border-yellow-500 shadow-xl bg-gradient-to-br from-gray-700 to-black`}>
+                             <span className="text-5xl">🛡️</span>
+                        </div>
+                        <div className="text-center">
+                            <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter leading-none drop-shadow-lg text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">
+                                {loadout.role}
+                            </h2>
+                            <p className="text-yellow-500 font-bold uppercase tracking-[0.3em] text-[10px] mt-2">Assigned Class</p>
+                        </div>
+                    </div>
+                 ) : (
+                   <div className="text-center space-y-1 relative">
                     <motion.div 
-                      key={loadout?.legend.id + "-glow"}
+                      key={loadout?.legend?.id + "-glow"}
                       initial={{ opacity: 0, scale: 1.5 }}
                       animate={{ opacity: 0, scale: 2 }}
+
                       className="absolute inset-0 bg-white blur-xl rounded-full pointer-events-none" 
                     />
                     
@@ -143,8 +173,10 @@ const LegendCard: React.FC<LegendCardProps> = ({
                       </div>
                     </div>
                  </div>
+                 )}
 
-                 {/* Weapons */}
+                 {/* Weapons - Only for FULL mode */}
+                 {mode === 'FULL' && (
                  <div className="w-full grid grid-cols-2 gap-3 mt-2">
                     {[loadout?.primary, loadout?.secondary].map((w, idx) => (
                        <motion.div 
@@ -172,6 +204,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                        </motion.div>
                     ))}
                  </div>
+                 )}
 
                  {/* Actions */}
                  {showReroll && (
@@ -182,15 +215,15 @@ const LegendCard: React.FC<LegendCardProps> = ({
                       className="flex gap-2 w-full mt-4"
                     >
                        {/* Avoid Button - Only for ME */}
-                       {isMe && (
+                       {isMe && mode !== 'ROLE' && (
                          <button 
                             className="flex-1 bg-gray-700 hover:bg-red-900/50 hover:text-red-200 hover:border-red-800 border border-transparent text-gray-400 text-[9px] font-bold py-2 rounded-xl transition-all uppercase tracking-wider"
-                            onClick={() => {}} // TODO: Re-implement onExclude if passed
+                            onClick={() => onExclude && loadout?.legend && onExclude(loadout.legend.id)}
                          >
                            Avoid
                          </button>
                        )}
-                       <button 
+                       <button  
                           onClick={onReroll}
                           className="flex-[2] bg-white hover:bg-gray-200 text-black text-[10px] font-black py-2 rounded-xl shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] transition-all active:scale-95 uppercase tracking-wider hover:-translate-y-0.5"
                        >
