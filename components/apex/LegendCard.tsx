@@ -11,17 +11,19 @@ interface LegendCardProps {
   isMe: boolean;
   onReroll: () => void;
   onExclude?: (id: string) => void;
+  onTrade?: () => void;
   isRolling?: boolean;
   isMuted?: boolean;
-  mode?: 'FULL' | 'LEGENDS' | 'ROLE';
+  mode?: 'FULL' | 'LEGENDS' | 'GUNS';
+  stats?: { kills: number, damage: number };
 }
 
 const CASINO_NAMES = ["WRAITH", "GIBRALTAR", "LIFELINE", "PATHFINDER", "OCTANE", "WATTSON", "CRYPTO", "REVENANT", "LOBA", "RAMPART", "HORIZON", "FUSE", "VALKYRIE", "SEER", "ASH", "MAD MAGGIE", "NEWCASTLE", "VANTAGE", "CATALYST", "BALLISTIC", "CONDUIT"];
 const CASINO_WEAPONS = ["R-301", "FLATLINE", "HEMLOCK", "R-99", "CAR", "VOLT", "NEMESIS", "HAVOC", "L-STAR", "SPITFIRE", "RAMPAGE", "DEVOTION", "MASTIFF", "EVA-8", "PEACEKEEPER", "MOZAMBIQUE", "WINGMAN", "P2020", "RE-45", "SENTINEL", "CHARGE RIFLE", "LONGBOW", "KRABER", "TRIPLE TAKE", "30-30", "G7 SCOUT", "BOCEK"];
-const CASINO_ROLES = ["ASSAULT", "SKIRMISHER", "RECON", "SUPPORT", "CONTROLLER"];
+const CASINO_ROLES = ["ASSAULT", "SKIRMISHER", "RECON", "SUPPORT", "CONTROLLER"]; // Unused but kept for ref
 
 const LegendCard: React.FC<LegendCardProps> = ({ 
-  playerName, loadout, showReroll, isMe, onReroll, onExclude, isRolling: externalRolling = false, isMuted = false, mode = 'FULL'
+  playerName, loadout, showReroll, isMe, onReroll, onExclude, onTrade, isRolling: externalRolling = false, isMuted = false, mode = 'FULL', stats
 }) => {
   const [internalRolling, setInternalRolling] = useState(false);
   const [casinoName, setCasinoName] = useState(CASINO_NAMES[0]);
@@ -73,10 +75,28 @@ const LegendCard: React.FC<LegendCardProps> = ({
   return (
     <div className={`bg-gray-800 rounded-[2rem] p-6 border border-gray-700 shadow-2xl relative overflow-hidden flex flex-col items-center gap-4 min-h-[400px] transition-all duration-300 ${!isMe ? 'hover:scale-[1.02]' : ''}`}>
        
-       {/* Player Name Badge */}
-       <div className="z-10 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full border border-gray-600 shadow-lg">
-          <h3 className="text-lg font-bold text-white tracking-wider uppercase truncate max-w-[150px]">{playerName}</h3>
+       {/* Player Name Badge - Top Left */}
+       <div className="absolute top-4 left-4 z-20 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/5 shadow-lg max-w-[45%]">
+          <h3 className="text-xs font-black text-white tracking-widest uppercase truncate">{playerName}</h3>
        </div>
+
+       {/* Stats Badges - Top Right */}
+       {stats && (stats.kills > 0 || stats.damage > 0) && (
+           <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1.5 animate-in fade-in slide-in-from-right-4 duration-500">
+                {stats.kills > 0 && (
+                    <div className="bg-red-500/10 backdrop-blur-sm border border-red-500/20 px-2.5 py-1 rounded-lg flex items-center gap-2 shadow-sm">
+                        <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">Kills</span>
+                        <span className="text-white font-mono font-bold text-xs">{stats.kills}</span>
+                    </div>
+                )}
+                {stats.damage > 0 && (
+                     <div className="bg-orange-500/10 backdrop-blur-sm border border-orange-500/20 px-2.5 py-1 rounded-lg flex items-center gap-2 shadow-sm">
+                        <span className="text-[9px] font-black text-orange-500 uppercase tracking-widest">Dmg</span>
+                        <span className="text-white font-mono font-bold text-xs">{stats.damage.toLocaleString()}</span>
+                    </div>
+                )}
+           </div>
+       )}
 
        <AnimatePresence mode="wait">
          {(loadout || showRolling) ? (
@@ -95,7 +115,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                            transition={{ repeat: Infinity, duration: 0.2, ease: "linear" }}
                            className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 uppercase tracking-tighter filter drop-shadow-glow"
                         >
-                           {mode === 'ROLE' ? casinoRole : casinoName}
+                           {casinoName}
                         </motion.div>
                      </div>
                      <span className="text-yellow-500/50 font-mono text-[10px] animate-pulse">
@@ -104,7 +124,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                   </div>
 
                    {/* Rolling Weapons */}
-                   {mode === 'FULL' && (
+                   {(mode === 'FULL' || mode === 'GUNS') && (
                      <div className="w-full grid grid-cols-2 gap-3 mt-2">
                       {[casinoWeapon1, casinoWeapon2].map((w, idx) => (
                            <div key={idx} className="bg-gray-800/50 p-3 rounded-xl flex flex-col items-center border border-gray-700/50">
@@ -127,56 +147,59 @@ const LegendCard: React.FC<LegendCardProps> = ({
                 className="w-full flex-1 flex flex-col items-center justify-between z-10 py-2"
               >
                  {/* Legend Info OR Role Info */}
-                 {mode === 'ROLE' && loadout?.role ? (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-4 py-8">
-                        <div className={`w-36 h-36 rounded-full flex items-center justify-center border-4 border-yellow-500 shadow-xl bg-gradient-to-br from-gray-700 to-black`}>
-                             <span className="text-5xl">🛡️</span>
-                        </div>
-                        <div className="text-center">
-                            <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter leading-none drop-shadow-lg text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">
-                                {loadout.role}
-                            </h2>
-                            <p className="text-yellow-500 font-bold uppercase tracking-[0.3em] text-[10px] mt-2">Assigned Class</p>
-                        </div>
-                    </div>
-                 ) : (
+                 {(mode === 'GUNS' || mode === 'FULL' || mode === 'LEGENDS') && (
                    <div className="text-center space-y-1 relative">
-                    <motion.div 
-                      key={loadout?.legend?.id + "-glow"}
-                      initial={{ opacity: 0, scale: 1.5 }}
-                      animate={{ opacity: 0, scale: 2 }}
+                    {mode !== 'GUNS' ? (
+                      <>
+                        <motion.div 
+                          key={loadout?.legend?.id + "-glow"}
+                          initial={{ opacity: 0, scale: 1.5 }}
+                          animate={{ opacity: 0, scale: 2 }}
 
-                      className="absolute inset-0 bg-white blur-xl rounded-full pointer-events-none" 
-                    />
-                    
-                    <div className="w-36 h-40 bg-gradient-to-b from-gray-700 to-black rounded-3xl shadow-2xl flex items-center justify-center mb-2 mx-auto relative overflow-hidden ring-4 ring-black/40 group">
-                       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-transparent opacity-50" />
-                       <img 
-                          src={loadout?.legend.image ? `/legends/${loadout.legend.image}` : `/legends/${loadout?.legend.id}.png`}
-                          alt={loadout?.legend.name}
-                          className="w-[110%] h-[110%] object-cover object-top transition-transform duration-500 group-hover:scale-105"
-                          onError={(e) => {
-                             e.currentTarget.style.display = 'none';
-                             e.currentTarget.parentElement?.querySelector('.placeholder-text')?.classList.remove('hidden');
-                          }}
-                       />
-                       <span className="placeholder-text hidden text-5xl font-black text-white mix-blend-overlay absolute inset-0 flex items-center justify-center">
-                         {loadout?.legend.name.substring(0, 1)}
-                       </span>
-                    </div>
-                    <div>
-                      <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none drop-shadow-lg">
-                        {loadout?.legend.name}
-                      </h2>
-                      <div className="text-[9px] font-bold text-gray-400 bg-gray-900 px-2 py-0.5 rounded-full inline-block mt-1 uppercase tracking-widest border border-gray-700 shadow-inner">
-                        {loadout?.legend.class}
+                          className="absolute inset-0 bg-white blur-xl rounded-full pointer-events-none" 
+                        />
+                        
+                        <div className="w-36 h-40 bg-gradient-to-b from-gray-700 to-black rounded-3xl shadow-2xl flex items-center justify-center mb-2 mx-auto relative overflow-hidden ring-4 ring-black/40 group">
+                           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-transparent opacity-50" />
+                           <img 
+                              src={loadout?.legend?.image ? `/legends/${loadout.legend.image}` : `/legends/${loadout?.legend?.id}.png`}
+                              alt={loadout?.legend?.name || ''}
+                              className="w-[110%] h-[110%] object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                              onError={(e) => {
+                                 e.currentTarget.style.display = 'none';
+                                 e.currentTarget.parentElement?.querySelector('.placeholder-text')?.classList.remove('hidden');
+                              }}
+                           />
+                           <span className="placeholder-text hidden text-5xl font-black text-white mix-blend-overlay absolute inset-0 flex items-center justify-center">
+                             {loadout?.legend?.name?.substring(0, 1)}
+                           </span>
+                        </div>
+                        <div>
+                          <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none drop-shadow-lg">
+                            {loadout?.legend?.name}
+                          </h2>
+                          <div className="text-[9px] font-bold text-gray-400 bg-gray-900 px-2 py-0.5 rounded-full inline-block mt-1 uppercase tracking-widest border border-gray-700 shadow-inner">
+                            {loadout?.legend?.class}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 py-8 group">
+                         <div className="w-32 h-32 rounded-3xl bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center overflow-hidden relative shadow-inner">
+                             <div className="absolute inset-0 bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-yellow-500/10 to-transparent rounded-full animate-pulse"></div>
+                             <span className="text-gray-500 text-4xl font-black opacity-50 group-hover:scale-110 transition-transform">?</span>
+                         </div>
+                         <h2 className="text-xl font-bold text-gray-400 uppercase tracking-widest">
+                            ANY LEGEND
+                         </h2>
+                         <p className="text-[9px] text-gray-500 uppercase tracking-wider">Your Choice</p>
                       </div>
-                    </div>
+                    )}
                  </div>
                  )}
 
-                 {/* Weapons - Only for FULL mode */}
-                 {mode === 'FULL' && (
+                 {/* Weapons - Only for FULL mode or GUNS mode */}
+                 {(mode === 'FULL' || mode === 'GUNS') && (
                  <div className="w-full grid grid-cols-2 gap-3 mt-2">
                     {[loadout?.primary, loadout?.secondary].map((w, idx) => (
                        <motion.div 

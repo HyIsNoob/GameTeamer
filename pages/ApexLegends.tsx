@@ -6,7 +6,39 @@ import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
 import { soundManager } from '../utils/soundManager';
 import LegendCard from '../components/apex/LegendCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Settings, Loader2, Volume2, VolumeX, History } from 'lucide-react';
+import { ArrowLeft, Settings, Loader2, Volume2, VolumeX, History, Share2 } from 'lucide-react';
+import { MapWidget } from '../components/apex/MapWidget';
+import { Scoreboard } from '../components/apex/Scoreboard';
+
+import { MatchResult, MatchResultv2 } from '../utils/rankLogic';
+
+// --- Components ---
+const NotificationToast = ({ notification, onClose }: { notification: { type: 'info' | 'error', message: string }, onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 5000); // Auto dismiss after 5s
+        return () => clearTimeout(timer);
+    }, [notification, onClose]);
+
+    return (
+        <motion.div 
+            initial={{ x: 100, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 100, opacity: 0 }}
+            className="fixed top-6 right-6 z-[90] bg-gray-900/95 backdrop-blur-md border border-gray-700/50 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[320px]"
+        >
+            <div className={`p-3 rounded-xl ${notification.type === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                {notification.type === 'error' ? <div className="font-black text-xs">ERR</div> : <div className="font-black text-xs">INF</div>}
+            </div>
+            <div className="flex-1">
+                <p className="font-bold text-xs uppercase tracking-wider text-gray-500 mb-0.5">{notification.type === 'error' ? 'System Error' : 'Notification'}</p>
+                <p className="text-sm text-gray-200 font-medium">{notification.message}</p>
+            </div>
+            <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-full">✕</button>
+        </motion.div>
+    );
+};
+
+
 
 // --- Types ---
 interface PlayerState {
@@ -26,7 +58,7 @@ interface ChatMessage {
 }
 
 interface GameState {
-  mode: 'FULL' | 'LEGENDS' | 'ROLE';
+  mode: 'FULL' | 'LEGENDS' | 'GUNS';
   loadouts: { [userId: string]: Loadout };
   bans: { [userId: string]: string[] };
   permissions: { 
@@ -74,6 +106,9 @@ const ApexLegends: React.FC = () => {
     }
   });
 
+
+  const [matchResults, setMatchResults] = useState<MatchResultv2[]>([]);
+
   const [isGlobalRolling, setIsGlobalRolling] = useState(false);
   const [confirmModalData, setConfirmModalData] = useState<{type: 'REROLL' | 'DISBAND' | 'LEAVE', title: string, message: string} | null>(null);
   const [showOptionsModal, setShowOptionsModal] = useState(false); // Config modal for permissions
@@ -87,11 +122,13 @@ const ApexLegends: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showChat, setShowChat] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [hasUnreadChat, setHasUnreadChat] = useState(false);
   const chatEndRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
      if (showChat) {
          chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+         setHasUnreadChat(false);
      }
   }, [chatMessages, showChat]);
 
@@ -99,6 +136,25 @@ const ApexLegends: React.FC = () => {
      soundManager.setMute(isMuted);
      localStorage.setItem('apex_muted', String(isMuted));
   }, [isMuted]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+       setSetupMode('JOIN');
+       setRoomId(code.toUpperCase());
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && setupMode === 'JOIN' && view === 'SETUP') {
+             handleJoinClick();
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setupMode, view, roomId, playerName]);
 
   // --- Helpers ---
   const updateGameState = (newState: GameState, recordHistory: boolean = true) => {
@@ -130,7 +186,7 @@ const ApexLegends: React.FC = () => {
       await channel.send({ type: 'broadcast', event: 'CHAT', payload: msg });
   };
 
-  const handleSetGameMode = (mode: 'FULL' | 'LEGENDS' | 'ROLE') => {
+  const handleSetGameMode = (mode: 'FULL' | 'LEGENDS' | 'GUNS') => {
       const newState = { ...gameState, mode };
       setGameState(newState);
       channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
@@ -209,9 +265,17 @@ const ApexLegends: React.FC = () => {
       })
       .on('broadcast', { event: 'CHAT' }, (payload) => {
           setChatMessages(prev => [...prev, payload.payload]);
-          if (!showChat) {
-             // Only show notification if quite new
+          if (payload.payload.sender !== playerName) {
+             soundManager.playTick();
+             if (!showChat) setHasUnreadChat(true);
           }
+      })
+
+      .on('broadcast', { event: 'SCORE_UPDATE' }, (payload) => {
+           setMatchResults(prev => [payload.payload.result, ...prev]);
+      })
+      .on('broadcast', { event: 'SCORE_CLEAR' }, () => {
+           setMatchResults([]);
       })
       .on('broadcast', { event: 'ROOM_CLOSED' }, () => {
         newChannel.unsubscribe();
@@ -312,7 +376,20 @@ const handleIndividualReroll = (userId: string) => {
     const unavailableLegends = getUnavailableLegendsForSlot(player.id, gameState.loadouts, gameState.bans);
     const playerExcludes = player.excludedLegends || [];
 
-    const newLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
+    let newLoadout;
+    if (gameState.mode === 'GUNS') {
+         const fullLoadout = getRandomLoadout([], []);
+         newLoadout = { 
+            legend: gameState.loadouts[player.id]?.legend || undefined,
+            primary: fullLoadout.primary,
+            secondary: fullLoadout.secondary
+         };
+    } else if (gameState.mode === 'LEGENDS') {
+         const fullLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
+         newLoadout = { legend: fullLoadout.legend };
+    } else {
+         newLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
+    }
     
 
     const newState = {
@@ -322,6 +399,20 @@ const handleIndividualReroll = (userId: string) => {
     
     updateGameState(newState, true);
     channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
+  };
+
+
+  
+  const handleAddResult = (result: MatchResultv2) => {
+     if (!channel) return;
+     setMatchResults(prev => [result, ...prev]);
+     channel.send({ type: 'broadcast', event: 'SCORE_UPDATE', payload: { result } });
+  };
+  
+  const handleClearResults = () => {
+     if (!channel) return;
+     setMatchResults([]);
+     channel.send({ type: 'broadcast', event: 'SCORE_CLEAR', payload: {} });
   };
 
   const handleDisbandRequest = () => {
@@ -376,10 +467,17 @@ const handleIndividualReroll = (userId: string) => {
              players.forEach(p => {
                  let loadout: Loadout;
                  
-                 if (gameState.mode === 'ROLE') {
-                     const roles = ['Assault', 'Skirmisher', 'Recon', 'Support', 'Controller'];
-                     const randomRole = roles[Math.floor(Math.random() * roles.length)];
-                     loadout = { role: randomRole };
+                 if (gameState.mode === 'GUNS') {
+                    // Randomize guns only, keep existing legend or set null
+                    // If we want to strictly 'reroll guns', we can try to preserve the legend if it exists in state
+                    // But usually global reroll clears state? The user said "không random tướng".
+                    // So we probably just generate random guns.
+                    const fullLoadout = getRandomLoadout([], []);
+                    loadout = { 
+                       legend: gameState.loadouts[p.id]?.legend || undefined, // Keep existing if any? Or maybe just don't set it.
+                       primary: fullLoadout.primary,
+                       secondary: fullLoadout.secondary
+                    };
                  } else {
                      // Check bans only if picking legends
                      const unavailable = getUnavailableLegendsForSlot(p.id, tempLoadouts, gameState.bans);
@@ -483,21 +581,10 @@ const handleIndividualReroll = (userId: string) => {
        {/* Notification Toast/Modal */}
        <AnimatePresence>
           {notification && (
-             <motion.div 
-               initial={{ y: -100, opacity: 0 }}
-               animate={{ y: 0, opacity: 1 }}
-               exit={{ y: -100, opacity: 0 }}
-               className="fixed top-6 left-1/2 -translate-x-1/2 z-[90] bg-gray-800 border-l-4 border-red-500 px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 min-w-[300px]"
-             >
-                <div className={`p-2 rounded-full ${notification.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                   {notification.type === 'error' ? '!' : 'i'}
-                </div>
-                <div className="flex-1">
-                   <p className="font-bold text-sm uppercase">{notification.type === 'error' ? 'Connection Error' : 'System Update'}</p>
-                   <p className="text-xs text-gray-400">{notification.message}</p>
-                </div>
-                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white">✕</button>
-             </motion.div>
+             <NotificationToast 
+                notification={notification} 
+                onClose={() => setNotification(null)} 
+             />
           )}
        </AnimatePresence>
 
@@ -554,6 +641,7 @@ const handleIndividualReroll = (userId: string) => {
                  <input 
                     value={roomId}
                     onChange={e => setRoomId(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleJoinClick()}
                     className="w-full bg-black/50 border border-gray-700 rounded-xl px-4 py-3 text-white text-center font-mono text-xl tracking-widest uppercase outline-none focus:border-red-500 transition-colors"
                     placeholder="CODE"
                     maxLength={10}
@@ -689,74 +777,84 @@ const handleIndividualReroll = (userId: string) => {
        {/* Notification Toast/Modal */}
        <AnimatePresence>
           {notification && (
-             <motion.div 
-               initial={{ y: -100, opacity: 0 }}
-               animate={{ y: 0, opacity: 1 }}
-               exit={{ y: -100, opacity: 0 }}
-               className="fixed top-6 left-1/2 -translate-x-1/2 z-[90] bg-gray-800 border-l-4 border-red-500 px-6 py-4 rounded-lg shadow-2xl flex items-center gap-4 min-w-[300px]"
-             >
-                <div className={`p-2 rounded-full ${notification.type === 'error' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                   {notification.type === 'error' ? '!' : 'i'}
-                </div>
-                <div className="flex-1">
-                   <p className="font-bold text-sm uppercase">{notification.type === 'error' ? 'Connection Error' : 'System Update'}</p>
-                   <p className="text-xs text-gray-400">{notification.message}</p>
-                </div>
-                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white">✕</button>
-             </motion.div>
+             <NotificationToast 
+                notification={notification} 
+                onClose={() => setNotification(null)} 
+             />
           )}
        </AnimatePresence>
 
-       {/* Header */}
-       <header className="flex flex-col md:flex-row justify-between items-center mb-6 bg-black/40 p-4 rounded-2xl border border-white/5 backdrop-blur-md gap-4">
-          <div className="flex items-center gap-4">
-            <button onClick={handleBackClick} className="bg-gray-800 p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white">
-               <ArrowLeft size={24} />
-            </button>
-            <div>
-               <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-                  <span className="text-gray-500">#</span>{roomId}
-               </h1>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold uppercase rounded-full border border-green-500/30 flex items-center gap-2">
-                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
-                 {players.length} Active
-              </span>
-              
-              {players.find(p => p.id === myId)?.slotIndex === 0 && (
-                <button 
-                  onClick={handleDisbandRequest}
-                  className="px-4 py-3 bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-800 font-bold uppercase text-xs rounded-xl transition-all"
-                >
-                  Disband
+       <header className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col md:flex-row justify-between items-center bg-black/40 p-4 rounded-2xl border border-white/5 backdrop-blur-md gap-4">
+            <div className="flex items-center gap-4">
+                <button onClick={handleBackClick} className="bg-gray-800 p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white">
+                <ArrowLeft size={24} />
                 </button>
-              )}
+                <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
+                    <span className="text-gray-500">#</span>{roomId}
+                </h1>
+                <button 
+                    onClick={() => {
+                            const url = `${window.location.origin}${window.location.pathname}?code=${roomId}`;
+                            navigator.clipboard.writeText(url);
+                            setNotification({ type: 'info', message: 'Invite link copied!' });
+                    }}
+                    className="bg-gray-800 p-2 rounded-lg hover:bg-blue-900/40 text-gray-400 hover:text-blue-400 transition-colors border border-transparent hover:border-blue-500/30"
+                    title="Copy Invite Link"
+                >
+                    <Share2 size={18} />
+                </button>
+                </div>
+            </div>
+          
+            <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold uppercase rounded-full border border-green-500/30 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
+                    {players.length} Active
+                </span>
+                
+                {players.find(p => p.id === myId)?.slotIndex === 0 && (
+                    <button 
+                    onClick={handleDisbandRequest}
+                    className="px-4 py-3 bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-800 font-bold uppercase text-xs rounded-xl transition-all"
+                    >
+                    Disband
+                    </button>
+                )}
 
-              <button 
-                onClick={() => setShowHistoryModal(true)}
-                className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
-                title="Roll History"
-              >
-                <History size={20} />
-              </button>
+                <button 
+                    onClick={() => setShowHistoryModal(true)}
+                    className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
+                    title="Roll History"
+                >
+                    <History size={20} />
+                </button>
 
-              <button 
-                onClick={() => setShowOptionsModal(true)}
-                className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
-              >
-                <Settings size={20} />
-              </button>
+                <button 
+                    onClick={() => setShowOptionsModal(true)}
+                    className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                    <Settings size={20} />
+                </button>
 
-              <button 
-                onClick={handleGlobalRerollRequest}
-                disabled={!canIDeploy}
-                className={`px-6 py-3 font-black uppercase text-sm rounded-xl shadow-lg transition-all ${ canIDeploy ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:brightness-110 active:scale-95' : 'bg-gray-800 text-gray-500 cursor-not-allowed grayscale'}`}
-              >
-                Deploy Team Randomizer
-              </button>
+                <Scoreboard 
+                    results={matchResults} 
+                    isHost={players.find(p => p.id === myId)?.slotIndex === 0} 
+                    onAddResult={handleAddResult}
+                    onClear={handleClearResults}
+                    players={players}
+                    myId={myId}
+                />
+
+                <button 
+                    onClick={handleGlobalRerollRequest}
+                    disabled={!canIDeploy}
+                    className={`px-6 py-3 font-black uppercase text-sm rounded-xl shadow-lg transition-all ${ canIDeploy ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:brightness-110 active:scale-95' : 'bg-gray-800 text-gray-500 cursor-not-allowed grayscale'}`}
+                >
+                    Deploy
+                </button>
+            </div>
           </div>
        </header>
 
@@ -775,6 +873,12 @@ const handleIndividualReroll = (userId: string) => {
              const isMe = !!(player && myId && player.id === myId);
              
              const canIRerollThisSlot = isMe || (player ? (gameState.permissions?.allowOthersRerollMe?.[player.id] === true) : false);
+
+             // Calculate stats
+             const pStats = player ? {
+                 kills: matchResults.reduce((acc, r) => acc + (r.details[player.id]?.kills || 0), 0),
+                 damage: matchResults.reduce((acc, r) => acc + (r.details[player.id]?.damage || 0), 0)
+             } : undefined;
 
              return (
                <motion.div 
@@ -799,6 +903,8 @@ const handleIndividualReroll = (userId: string) => {
                     isRolling={isGlobalRolling}
                     isMuted={isMuted}
                     mode={gameState.mode}
+
+                    stats={pStats}
                   />
 
                   {/* Empty Slot Indicator */}
@@ -894,16 +1000,16 @@ const handleIndividualReroll = (userId: string) => {
                              Legends
                           </button>
                           <button 
-                             onClick={() => handleSetGameMode('ROLE')}
-                             className={`p-2 rounded-lg text-xs font-bold uppercase transition-colors border ${gameState.mode === 'ROLE' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'}`}
+                             onClick={() => handleSetGameMode('GUNS')}
+                             className={`p-2 rounded-lg text-xs font-bold uppercase transition-colors border ${gameState.mode === 'GUNS' ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'}`}
                           >
-                             Role
+                             Guns Only
                           </button>
                       </div>
                       <p className="text-[10px] text-gray-400 mt-2">
                         {gameState.mode === 'FULL' && "Randomizes everything: Legend and Weapons."}
                         {gameState.mode === 'LEGENDS' && "Randomizes Legend only. Weapons are free choice."}
-                        {gameState.mode === 'ROLE' && "Randomizes Class Role only. You pick Legend & Guns."}
+                        {gameState.mode === 'GUNS' && "Randomizes Guns only. Legend is free choice."}
                       </p>
                    </div>
                )}
@@ -962,10 +1068,10 @@ const handleIndividualReroll = (userId: string) => {
        {!showChat ? (
           <button 
              onClick={() => setShowChat(true)}
-             className="fixed bottom-6 right-6 z-40 bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-full shadow-2xl border border-white/10 transition-transform hover:scale-110 active:scale-95 group"
+             className="fixed bottom-6 right-6 z-40 bg-gray-900/80 backdrop-blur-md hover:bg-gray-800 text-white p-4 rounded-full shadow-2xl border border-white/10 transition-transform hover:scale-110 active:scale-95 group"
           >
-             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping opacity-75" hidden={!notification} />
-             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" hidden={!notification} />
+             <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping" hidden={!hasUnreadChat} />
+             <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900" hidden={!hasUnreadChat} />
              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-blue-400 transition-colors"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           </button>
        ) : (
@@ -973,35 +1079,45 @@ const handleIndividualReroll = (userId: string) => {
              initial={{ opacity: 0, y: 20, scale: 0.95 }}
              animate={{ opacity: 1, y: 0, scale: 1 }}
              exit={{ opacity: 0, y: 20 }}
-             className="fixed bottom-6 right-6 z-40 w-80 md:w-96 h-[450px] bg-gray-900/95 backdrop-blur-xl border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+             className="fixed bottom-6 right-6 z-40 w-80 md:w-96 h-[500px] bg-gray-900/90 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
           >
              {/* Chat Header */}
-             <div className="p-3 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center cursor-pointer" onClick={() => setShowChat(false)}>
-                <div className="flex items-center gap-2">
-                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                   <h3 className="font-bold text-sm uppercase tracking-wide">Squad Comms</h3>
+             <div className="p-4 bg-white/5 border-b border-white/5 flex justify-between items-center cursor-pointer" onClick={() => setShowChat(false)}>
+                <div className="flex items-center gap-3">
+                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
+                   <div>
+                       <h3 className="font-bold text-sm uppercase tracking-wide text-white">Squad Comms</h3>
+                       <p className="text-[10px] text-gray-400 font-mono tracking-widest">ENCRYPTED</p>
+                   </div>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); setShowChat(false); }} className="text-gray-400 hover:text-white p-1">
+                <button onClick={(e) => { e.stopPropagation(); setShowChat(false); }} className="text-gray-400 hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors">
                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
              </div>
              
              {/* Messages */}
-             <div className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-sm scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+             <div className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-sm scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent bg-black/20">
                 {chatMessages.length === 0 && (
-                   <div className="text-center text-gray-500 text-xs italic mt-10">No transmission detected.</div>
+                   <div className="text-center py-20 opacity-50">
+                       <div className="inline-block p-4 rounded-full bg-white/5 mb-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                       </div>
+                       <p className="text-xs uppercase tracking-widest text-gray-500">No transmission</p>
+                   </div>
                 )}
                 {chatMessages.map(msg => {
                    const isMe = msg.sender === playerName;
                    return (
-                      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                         <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
-                            isMe ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'bg-gray-800 text-gray-200 border border-gray-700'
+                      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                         <div className={`max-w-[85%] px-4 py-2.5 shadow-lg backdrop-blur-sm ${
+                            isMe 
+                            ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none' 
+                            : 'bg-gray-800 text-gray-100 rounded-2xl rounded-tl-none border border-gray-700'
                          }`}>
-                            {!isMe && <span className="text-[10px] font-bold text-gray-500 block mb-1 uppercase tracking-wider">{msg.sender}</span>}
+                            {!isMe && <span className="text-[9px] font-bold text-gray-400 block mb-1 uppercase tracking-wider">{msg.sender}</span>}
                             <span>{msg.text}</span>
                          </div>
-                         <span className="text-[9px] text-gray-600 mt-1 px-1">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                         <span className="text-[9px] text-gray-500 mt-1 px-1 opacity-70">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                       </div>
                    )
                 })}
@@ -1009,21 +1125,21 @@ const handleIndividualReroll = (userId: string) => {
              </div>
 
              {/* Input */}
-             <form onSubmit={handleSendMessage} className="p-3 bg-gray-800/50 border-t border-gray-700">
+             <form onSubmit={handleSendMessage} className="p-3 bg-white/5 border-t border-white/5 backdrop-blur-md">
                 <div className="flex gap-2">
                    <input 
                       type="text" 
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder="Type message..." 
-                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:bg-black/60 transition-all text-white placeholder-gray-500"
                    />
                    <button 
                       type="submit"
                       disabled={!newMessage.trim()}
-                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white p-2 rounded-lg transition-colors"
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white p-3 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-blue-900/20"
                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                    </button>
                 </div>
              </form>
@@ -1064,6 +1180,7 @@ const handleIndividualReroll = (userId: string) => {
           </motion.div>
         </div>
        )}
+
     </div>
   );
 };
