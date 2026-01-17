@@ -43,7 +43,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
     // Form State
     const [teamPlacement, setTeamPlacement] = useState(20);
     const [playerStats, setPlayerStats] = useState<{
-        [id: string]: { kills: number, assists: number, damage: number, participation: number, tier: string }
+        [id: string]: { kills: number, assists: number, damage: number, participation: number, skillBonus: number, tier: string }
     }>({});
 
     // Initialize/Sync Form with current players
@@ -59,6 +59,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
                         assists: 0,
                         damage: 0,
                         participation: 0,
+                        skillBonus: 0,
                         tier: savedRanks[p.id] || RANK_TIERS[3] // Default Gold
                     };
                 }
@@ -89,8 +90,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
         const ranksToSave = getSavedRanks();
 
         players.forEach(p => {
-            const stats = playerStats[p.id] || { kills: 0, assists: 0, damage: 0, participation: 0, tier: 'Gold' };
-            const calc = calculateRP(stats.tier, teamPlacement, stats.kills, stats.assists, stats.participation);
+            const stats = playerStats[p.id] || { kills: 0, assists: 0, damage: 0, participation: 0, skillBonus: 0, tier: 'Gold' };
+            const calc = calculateRP(stats.tier, teamPlacement, stats.kills, stats.assists, stats.participation, stats.skillBonus || 0);
             
             details[p.id] = {
                 ...stats,
@@ -229,7 +230,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
 
                                <div className="space-y-4">
                                    {players.map(p => {
-                                       const stats = playerStats[p.id] || { kills: 0, assists: 0, damage: 0, participation: 0, tier: 'Gold' };
+                                       const stats = playerStats[p.id] || { kills: 0, assists: 0, damage: 0, participation: 0, skillBonus: 0, tier: 'Gold' };
                                        const rankStyle = getRankColor(stats.tier);
                                        const totalKills = results.reduce((acc, r) => acc + (r.details[p.id]?.kills || 0), 0);
                                        const totalDamage = results.reduce((acc, r) => acc + (r.details[p.id]?.damage || 0), 0);
@@ -259,8 +260,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
                                                    </div>
                                                </div>
                                                
-                                               <div className="grid grid-cols-4 gap-2">
-                                                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 flex flex-col justify-center">
+                                               <div className="grid grid-cols-5 gap-1.5">
+                                                   <div className="bg-black/40 rounded-lg p-1.5 border border-white/5 flex flex-col justify-center">
                                                        <label className="text-[9px] uppercase text-gray-400 font-bold block mb-1 text-center">Kill</label>
                                                        <input 
                                                             type="number" min="0" 
@@ -270,7 +271,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
                                                             className="w-full bg-transparent text-center font-mono font-bold text-white outline-none focus:text-blue-400 text-lg p-0 placeholder-gray-700"
                                                        />
                                                    </div>
-                                                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 flex flex-col justify-center">
+                                                   <div className="bg-black/40 rounded-lg p-1.5 border border-white/5 flex flex-col justify-center">
                                                        <label className="text-[9px] uppercase text-gray-400 font-bold block mb-1 text-center">Ast</label>
                                                        <input 
                                                             type="number" min="0" 
@@ -280,7 +281,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
                                                             className="w-full bg-transparent text-center font-mono font-bold text-white outline-none focus:text-blue-400 text-lg p-0 placeholder-gray-700"
                                                        />
                                                    </div>
-                                                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 flex flex-col justify-center">
+                                                   <div className="bg-black/40 rounded-lg p-1.5 border border-white/5 flex flex-col justify-center">
                                                        <label className="text-[9px] uppercase text-gray-400 font-bold block mb-1 text-center">Part</label>
                                                        <input 
                                                             type="number" min="0" 
@@ -290,7 +291,17 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ results, onAddResult, on
                                                             className="w-full bg-transparent text-center font-mono font-bold text-white outline-none focus:text-blue-400 text-lg p-0 placeholder-gray-700"
                                                        />
                                                    </div>
-                                                   <div className="bg-black/40 rounded-lg p-2 border border-white/5 flex flex-col justify-center">
+                                                   <div className="bg-black/40 rounded-lg p-1.5 border border-white/5 flex flex-col justify-center">
+                                                       <label className="text-[9px] uppercase text-gray-400 font-bold block mb-1 text-center">Bonus</label>
+                                                       <input 
+                                                            type="number" 
+                                                            value={stats.skillBonus === 0 ? '' : stats.skillBonus} 
+                                                            placeholder="0"
+                                                            onChange={e => handleStatChange(p.id, 'skillBonus', e.target.value === '' ? 0 : Number(e.target.value))} 
+                                                            className="w-full bg-transparent text-center font-mono font-bold text-white outline-none focus:text-yellow-400 text-lg p-0 placeholder-gray-700"
+                                                       />
+                                                   </div>
+                                                   <div className="bg-black/40 rounded-lg p-1.5 border border-white/5 flex flex-col justify-center">
                                                        <label className="text-[9px] uppercase text-gray-400 font-bold block mb-1 text-center">Dmg</label>
                                                        <input 
                                                             type="number" min="0" 

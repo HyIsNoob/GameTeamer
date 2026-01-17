@@ -4,27 +4,26 @@ export const ENTRY_COSTS: Record<string, number> = {
     'Rookie': 0,
     'Bronze': 10,
     'Silver': 20,
-    'Gold': 40,
-    'Platinum': 60,
-    'Diamond': 80,
-    'Master': 100,
-    'Predator': 100
+    'Gold': 38,
+    'Platinum': 48,
+    'Diamond': 65,
+    'Master': 90,
+    'Predator': 90
 };
 
 export const PLACEMENT_POINTS: Record<number, number> = {
-    1: 125, 2: 95, 3: 70, 4: 55, 5: 45,
-    6: 30, 7: 20, 8: 10, 9: 10, 10: 10,
-    11: 5, 12: 5, 13: 5, 14: 0, 15: 0,
+    1: 125, 2: 100, 3: 75, 4: 55, 5: 45,
+    6: 40, 7: 30, 8: 30, 9: 20, 10: 20,
+    11: 10, 12: 10, 13: 10, 14: 10, 15: 10,
     16: 0, 17: 0, 18: 0, 19: 0, 20: 0
 };
 
-// Approximate KP Value based on recent seasons (Season 20+)
-// KP value scales with placement.
+// KP Value per K/A/P based on Placement (Season 26)
 export const KP_VALUE_BY_PLACEMENT: Record<number, number> = {
-    1: 26, 2: 24, 3: 22, 4: 20, 5: 18,
-    6: 16, 7: 15, 8: 14, 9: 13, 10: 12,
-    11: 10, 12: 9, 13: 8, 14: 5, 15: 4, 
-    16: 2, 17: 1, 18: 1, 19: 1, 20: 1
+    1: 20, 2: 18, 3: 16, 4: 14, 5: 12,
+    6: 10, 7: 10, 8: 10, 9: 8, 10: 8,
+    11: 6, 12: 6, 13: 6, 14: 6, 15: 6,
+    16: 4, 17: 4, 18: 4, 19: 4, 20: 4
 };
 
 export interface MatchResult {
@@ -49,6 +48,7 @@ export interface MatchResultv2 {
             assists: number;
             damage: number;
             participation: number;
+            skillBonus: number; // Added for manual bonus (Skill/Top Streak/Challenger)
             tier: string;
             rp: number;
         }
@@ -57,27 +57,31 @@ export interface MatchResultv2 {
     timestamp: number;
 }
 
-export const calculateRP = (tier: string, placement: number, kills: number, assists: number, participation: number): { total: number, breakdown: any } => {
+export const calculateRP = (tier: string, placement: number, kills: number, assists: number, participation: number, skillBonus: number = 0): { total: number, breakdown: any } => {
     const entry = ENTRY_COSTS[tier] || 0;
     const placePts = PLACEMENT_POINTS[placement] || 0;
     
-    // Cap KP per match is usually soft-capped or scaled, but in S20 it's mostly about value scaling.
-    // Total KP (Kills + Assists) count fully. Participation counts partial.
-    // We will simplify: (K + A) * Value + (P * Value * 0.5)
+    // Season 26 Logic:
+    // KP = Kills + Assists + (Participation * 0.5)
+    // Cap at 8 KP for full value. Excess KP is worth 50%.
     
     const kpVal = KP_VALUE_BY_PLACEMENT[placement] || 10;
     
-    const kpPoints = (kills + assists) * kpVal;
-    const partPoints = participation * (kpVal * 0.5);
+    const rawKP = kills + assists + (participation * 0.5);
+    const fullKP = Math.min(rawKP, 8);
+    const overflowKP = Math.max(0, rawKP - 8);
     
-    const total = (placePts + kpPoints + partPoints) - entry;
+    const kpPoints = (fullKP * kpVal) + (overflowKP * (kpVal * 0.5));
+    
+    const total = (placePts + kpPoints + skillBonus) - entry;
     
     return {
         total: Math.floor(total),
         breakdown: {
             entry: -entry,
             placement: placePts,
-            kp: Math.floor(kpPoints + partPoints)
+            kp: Math.floor(kpPoints),
+            skill: skillBonus
         }
     };
 };
