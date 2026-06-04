@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../utils/supabase';
+import { isSupabaseConfigured, supabase } from '../utils/supabase';
 import { getRandomLoadout, Loadout } from '../utils/apexLogic';
 import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
 import { soundManager } from '../utils/soundManager';
@@ -221,6 +221,14 @@ const ApexLegends: React.FC = () => {
   }
 
   const connectToRoom = async (code: string, mode: 'JOIN' | 'CREATE') => {
+    if (!isSupabaseConfigured) {
+      setNotification({
+        message: 'Supabase is not configured. Please add your project URL and publishable/anon key to .env.local.',
+        type: 'error'
+      });
+      return;
+    }
+
     setIsProcessing(true);
     localStorage.setItem('apex_player_name', playerName);
 

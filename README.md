@@ -68,6 +68,11 @@ npm install
 Create a `.env.local` file and add your Supabase credentials:
 ```env
 VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_or_anon_key
+```
+
+Older Supabase projects may call this key the anon key. The app also supports:
+```env
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
@@ -144,8 +149,14 @@ GameTeamer/
 ## Supabase Configuration
 
 1. Create a project on [Supabase](https://supabase.com).
-2. Enable Realtime in Project Settings.
-3. Copy URL and Anon Key to `.env.local`.
+2. If you have an old backup, restore it into the new project first.
+3. In Supabase, open **Project Settings > API**.
+4. Copy the **Project URL** into `VITE_SUPABASE_URL`.
+5. Copy the browser-safe **Publishable key** or legacy **anon public key** into `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY`.
+6. Ensure Supabase Realtime is enabled for the project.
+7. For Vercel deployment, add the same environment variables in **Vercel Project Settings > Environment Variables**, then redeploy.
+
+This app currently uses Supabase Realtime Broadcast and Presence only. It does not read or write any Postgres tables, so there are no local migrations required for the current codebase.
 
 ---
 
