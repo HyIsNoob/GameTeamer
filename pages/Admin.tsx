@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../utils/supabase';
-import { isAdminUser, loadAdminCatalog } from '../utils/catalogService';
+import { loadAdminCatalog } from '../utils/catalogService';
 import { CatalogSnapshot } from '../utils/catalogTypes';
 import { getFallbackCatalog, useCatalog } from '../contexts/CatalogContext';
 import { AdminLogin } from '../components/admin/AdminLogin';
@@ -17,67 +17,126 @@ const Admin: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [adminCatalog, setAdminCatalog] = useState<CatalogSnapshot>(getFallbackCatalog());
 
+  // Prevent state updates after unmount
+  const isMountedRef = useRef(true);
+
+  // Background catalog refresh
   const fetchAdminCatalog = useCallback(async () => {
     try {
       const data = await loadAdminCatalog();
-      setAdminCatalog(data);
-      await refreshGlobalCatalog();
+      if (isMountedRef.current) {
+        setAdminCatalog(data);
+      }
+      // Silently refresh global catalog without blocking
+      refreshGlobalCatalog().catch(() => {});
     } catch (err) {
-      console.error('Failed to load admin catalog:', err);
+      console.warn('Failed to load admin catalog:', err);
     }
   }, [refreshGlobalCatalog]);
 
+  // Check auth and admin privileges without blocking the screen
   const checkAuth = useCallback(async () => {
     if (!isSupabaseConfigured) {
-      setCheckingAuth(false);
+      if (isMountedRef.current) setCheckingAuth(false);
       return;
     }
 
     try {
-      setCheckingAuth(true);
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isMountedRef.current) return;
+
+      if (session?.user) {
         setIsAuthenticated(true);
-        setUserEmail(data.session.user.email);
-        const adminCheck = await isAdminUser();
-        setIsAdmin(adminCheck);
-        if (adminCheck) {
-          await fetchAdminCatalog();
+        setUserEmail(session.user.email);
+
+        // Check admin role with a 4-second timeout race
+        try {
+          const rpcPromise = supabase.rpc('is_game_teamer_admin');
+          const timeoutPromise = new Promise<{ data: boolean; error: any }>((resolve) =>
+            setTimeout(() => resolve({ data: false, error: new Error('RPC timeout') }), 4000)
+          );
+          const { data: adminRpc } = await Promise.race([rpcPromise, timeoutPromise]);
+          const adminPassed = Boolean(adminRpc);
+
+          if (isMountedRef.current) {
+            setIsAdmin(adminPassed);
+            setCheckingAuth(false); // Unblock screen immediately!
+          }
+
+          if (adminPassed) {
+            fetchAdminCatalog();
+          }
+        } catch (rpcErr) {
+          console.warn('Admin check error:', rpcErr);
+          if (isMountedRef.current) {
+            setIsAdmin(false);
+            setCheckingAuth(false);
+          }
         }
       } else {
-        setIsAuthenticated(false);
-        setIsAdmin(false);
-        setUserEmail(undefined);
+        if (isMountedRef.current) {
+          setIsAuthenticated(false);
+          setIsAdmin(false);
+          setUserEmail(undefined);
+          setCheckingAuth(false);
+        }
       }
     } catch (err) {
       console.error('Auth verification error:', err);
-      setIsAuthenticated(false);
-      setIsAdmin(false);
-    } finally {
-      setCheckingAuth(false);
+      if (isMountedRef.current) {
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+        setCheckingAuth(false);
+      }
     }
   }, [fetchAdminCatalog]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
+    // Safety timeout: never stay in checkingAuth for > 5 seconds under any circumstance
+    const safetyTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setCheckingAuth(false);
+      }
+    }, 5000);
+
     checkAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMountedRef.current) return;
+
       if (session?.user) {
         setIsAuthenticated(true);
         setUserEmail(session.user.email);
-        const adminCheck = await isAdminUser();
-        setIsAdmin(adminCheck);
-        if (adminCheck) {
-          await fetchAdminCatalog();
+        try {
+          const { data } = await supabase.rpc('is_game_teamer_admin');
+          if (isMountedRef.current) {
+            setIsAdmin(Boolean(data));
+            setCheckingAuth(false);
+          }
+          if (data) {
+            fetchAdminCatalog();
+          }
+        } catch {
+          if (isMountedRef.current) {
+            setIsAdmin(false);
+            setCheckingAuth(false);
+          }
         }
       } else {
-        setIsAuthenticated(false);
-        setIsAdmin(false);
-        setUserEmail(undefined);
+        if (isMountedRef.current) {
+          setIsAuthenticated(false);
+          setIsAdmin(false);
+          setUserEmail(undefined);
+          setCheckingAuth(false);
+        }
       }
     });
 
     return () => {
+      isMountedRef.current = false;
+      clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
   }, [checkAuth, fetchAdminCatalog]);

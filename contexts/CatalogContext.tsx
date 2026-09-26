@@ -87,8 +87,13 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [refresh]);
 
+  const contextValue = React.useMemo(
+    () => ({ catalog, loading, error, isFallback, refresh }),
+    [catalog, loading, error, isFallback, refresh]
+  );
+
   return (
-    <CatalogContext.Provider value={{ catalog, loading, error, isFallback, refresh }}>
+    <CatalogContext.Provider value={contextValue}>
       {children}
     </CatalogContext.Provider>
   );
