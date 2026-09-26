@@ -18,24 +18,28 @@ export const generateValorantRoomId = (): string => {
 };
 
 /**
- * Assigns exactly 5 distinct active agents to 5 distinct players.
- * Throws an error if fewer than 5 players or fewer than 5 active agents are provided.
+ * Assigns distinct active agents to between 1 and 5 distinct players.
+ * Throws an error if fewer than 1 player or fewer active agents than players are provided.
  */
 export const assignAgents = (
   players: ValorantPlayer[],
   agents: ValorantAgent[],
   random: () => number = Math.random
 ): AgentAssignment[] => {
-  // 1. Validate exactly 5 unique players
-  const uniquePlayerIds = new Set(players.map((p) => p.id));
-  if (players.length !== 5 || uniquePlayerIds.size !== 5) {
-    throw new Error('A 5-player squad roulette requires exactly 5 distinct players.');
+  // 1. Validate between 1 and 5 unique players
+  if (players.length < 1 || players.length > 5) {
+    throw new Error('Valorant roulette requires between 1 and 5 players in the lobby.');
   }
 
-  // 2. Validate at least 5 active agents
+  const uniquePlayerIds = new Set(players.map((p) => p.id));
+  if (uniquePlayerIds.size !== players.length) {
+    throw new Error('Each player in the lobby must have a unique identifier.');
+  }
+
+  // 2. Validate at least as many active agents as players
   const activeAgents = agents.filter((a) => a.isActive !== false);
-  if (activeAgents.length < 5) {
-    throw new Error(`Need at least 5 active VALORANT agents to assign (found ${activeAgents.length}).`);
+  if (activeAgents.length < players.length) {
+    throw new Error(`Need at least ${players.length} active VALORANT agents to assign (found ${activeAgents.length}).`);
   }
 
   // 3. Stable sort players by slotIndex or onlineAt
@@ -55,7 +59,7 @@ export const assignAgents = (
     shuffledAgents[j] = temp;
   }
 
-  // 5. Pair first 5 shuffled agents with players
+  // 5. Pair first N shuffled agents with players
   return sortedPlayers.map((player, idx) => ({
     playerId: player.id,
     playerName: player.name,

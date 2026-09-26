@@ -8,7 +8,7 @@ const LandingPage: React.FC = () => {
     <div className="min-h-screen bg-neutral-950 text-white font-sans overflow-x-hidden relative selection:bg-red-500 selection:text-white flex flex-col justify-center">
       {/* Background Ambience */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-neutral-900 via-neutral-950 to-black z-0 pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 z-0 pointer-events-none mix-blend-overlay" />
+      <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 z-0 pointer-events-none mix-blend-overlay" />
       <div
         className="absolute inset-0 z-0 opacity-10"
         style={{

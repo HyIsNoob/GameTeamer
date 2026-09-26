@@ -23,7 +23,20 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
   // Form states
   const [id, setId] = useState(item?.id || '');
   const [name, setName] = useState(item?.name || '');
+  const [userEditedId, setUserEditedId] = useState(Boolean(item?.id));
   const [isActive, setIsActive] = useState(item?.isActive ?? true);
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!userEditedId && !isEditing) {
+      setId(val.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_'));
+    }
+  };
+
+  const handleIdChange = (val: string) => {
+    setId(val);
+    setUserEditedId(true);
+  };
 
   // Weapon specific
   const [weaponType, setWeaponType] = useState<WeaponType>(
@@ -88,19 +101,23 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Name is required.');
+      setError('Display Name is required.');
       return;
     }
 
-    const finalId = id.trim() || name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const finalId = (id.trim() || name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_')).replace(/[^a-z0-9_-]/g, '_');
+    if (!finalId) {
+      setError('A valid slug ID or Name is required.');
+      return;
+    }
 
     try {
       setSaving(true);
       setError(null);
 
       if (type === 'WEAPON') {
-        if (!weaponImage) {
-          setError('Weapon image is required.');
+        if (!weaponImage.trim()) {
+          setError('Weapon artwork is required. Please upload an image or enter a valid filename/URL.');
           return;
         }
         await onSave({
@@ -108,33 +125,33 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
           name: name.trim(),
           type: weaponType,
           ammo: ammoType,
-          image: weaponImage,
+          image: weaponImage.trim(),
           isCarePackage,
           isActive
         });
       } else if (type === 'LEGEND') {
-        if (!cardImage || !portraitIcon) {
-          setError('Both Card Image and Portrait Icon are required for a Legend.');
+        if (!cardImage.trim() || !portraitIcon.trim()) {
+          setError('Both Full-Body Card Image and Portrait Icon are required for a Legend.');
           return;
         }
         await onSave({
           id: finalId,
           name: name.trim(),
           class: legendClass,
-          image: cardImage,
-          icon: portraitIcon,
+          image: cardImage.trim(),
+          icon: portraitIcon.trim(),
           isActive
         });
       } else if (type === 'AGENT') {
-        if (!agentImage) {
-          setError('Agent image is required.');
+        if (!agentImage.trim()) {
+          setError('Agent portrait artwork is required. Please upload an image or enter a valid filename/URL.');
           return;
         }
         await onSave({
           id: finalId,
           name: name.trim(),
           role: agentRole,
-          image: agentImage,
+          image: agentImage.trim(),
           isActive
         });
       }
@@ -187,9 +204,9 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
                 type="text"
                 disabled={isEditing}
                 value={id}
-                onChange={(e) => setId(e.target.value)}
-                placeholder="e.g. nemesis or sparrow"
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 disabled:opacity-50 focus:outline-none focus:border-red-500"
+                onChange={(e) => handleIdChange(e.target.value)}
+                placeholder="Auto-generated or custom slug"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 disabled:opacity-50 focus:outline-none focus:border-red-500 font-mono text-xs"
               />
             </div>
 
@@ -201,7 +218,7 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
                 type="text"
                 required
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="e.g. Nemesis Burst AR"
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-red-500"
               />
@@ -495,6 +512,13 @@ export const CatalogItemForm: React.FC<CatalogItemFormProps> = ({ type, item, on
                 </div>
               </div>
             </>
+          )}
+
+          {error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-2.5 text-red-400 text-xs">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
           )}
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-800">

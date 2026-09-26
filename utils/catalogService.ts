@@ -168,8 +168,17 @@ export const saveLegend = async (legend: Legend): Promise<void> => {
     updated_at: new Date().toISOString()
   };
 
-  const { error } = await supabase.from('apex_legends').upsert(payload);
+  const { data, error } = await supabase
+    .from('apex_legends')
+    .upsert(payload, { onConflict: 'id' })
+    .select();
+
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      'Update failed: Permission denied by database security policy. Please verify your email is in public.game_admin_allowlist.'
+    );
+  }
 };
 
 export const saveWeapon = async (weapon: Weapon): Promise<void> => {
@@ -186,8 +195,17 @@ export const saveWeapon = async (weapon: Weapon): Promise<void> => {
     updated_at: new Date().toISOString()
   };
 
-  const { error } = await supabase.from('apex_weapons').upsert(payload);
+  const { data, error } = await supabase
+    .from('apex_weapons')
+    .upsert(payload, { onConflict: 'id' })
+    .select();
+
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      'Update failed: Permission denied by database security policy. Please verify your email is in public.game_admin_allowlist.'
+    );
+  }
 };
 
 export const saveAgent = async (agent: ValorantAgent): Promise<void> => {
@@ -202,8 +220,17 @@ export const saveAgent = async (agent: ValorantAgent): Promise<void> => {
     updated_at: new Date().toISOString()
   };
 
-  const { error } = await supabase.from('valorant_agents').upsert(payload);
+  const { data, error } = await supabase
+    .from('valorant_agents')
+    .upsert(payload, { onConflict: 'id' })
+    .select();
+
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      'Update failed: Permission denied by database security policy. Please verify your email is in public.game_admin_allowlist.'
+    );
+  }
 };
 
 export const uploadCatalogImage = async (

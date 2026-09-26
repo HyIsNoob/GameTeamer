@@ -46,7 +46,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
     <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background radial effects */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-red-950/40 via-neutral-950 to-neutral-950 pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
+      <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
 
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.95 }}

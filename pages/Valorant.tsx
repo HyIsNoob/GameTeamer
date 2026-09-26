@@ -238,10 +238,10 @@ const Valorant: React.FC = () => {
   };
 
   const handleRollRoulette = async () => {
-    if (players.length !== 5) {
+    if (players.length < 1 || players.length > 5) {
       setNotification({
         type: 'error',
-        message: `Need exactly 5 players to roll (currently ${players.length}/5).`
+        message: 'Need between 1 and 5 players in the lobby to roll roulette.'
       });
       return;
     }
@@ -296,7 +296,7 @@ const Valorant: React.FC = () => {
     <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-rose-500 selection:text-white relative overflow-x-hidden">
       {/* Background Ambience */}
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-rose-950/25 via-neutral-950 to-neutral-950 pointer-events-none" />
-      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
+      <div className="fixed inset-0 bg-[url('/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
 
       {/* Notification Toast */}
       <AnimatePresence>
@@ -385,8 +385,8 @@ const Valorant: React.FC = () => {
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-rose-600 to-red-500 flex items-center justify-center mx-auto shadow-lg shadow-rose-900/40">
                   <Users className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-black uppercase text-white tracking-tight">5-Player Agent Roulette</h2>
-                <p className="text-xs text-neutral-400">Launch or join an online lobby to randomly assign 5 distinct Agents.</p>
+                <h2 className="text-2xl font-black uppercase text-white tracking-tight">Squad Agent Roulette</h2>
+                <p className="text-xs text-neutral-400">Launch or join an online lobby to randomly assign distinct Agents for 1-5 players.</p>
               </div>
 
               {/* Mode Switcher */}
@@ -449,7 +449,7 @@ const Valorant: React.FC = () => {
                       <span>Connecting...</span>
                     </>
                   ) : (
-                    <span>{setupMode === 'CREATE' ? 'Launch 5-Player Lobby' : 'Join Squad Lobby'}</span>
+                    <span>{setupMode === 'CREATE' ? 'Launch Squad Lobby' : 'Join Squad Lobby'}</span>
                   )}
                 </button>
               </div>
@@ -468,7 +468,7 @@ const Valorant: React.FC = () => {
                     <span className="font-black text-lg uppercase text-white">Squad Roster</span>
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
-                        players.length === 5
+                        players.length >= 1
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                           : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
                       }`}
@@ -477,9 +477,9 @@ const Valorant: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-xs text-neutral-400">
-                    {players.length === 5
-                      ? 'Lobby full! Anyone can trigger the squad roulette below.'
-                      : `Waiting for ${5 - players.length} more players to join via room link.`}
+                    {players.length >= 1
+                      ? `Lobby ready (${players.length} player${players.length > 1 ? 's' : ''})! Anyone can roll agents.`
+                      : 'Waiting for players to join via room link.'}
                   </p>
                 </div>
               </div>
@@ -487,23 +487,23 @@ const Valorant: React.FC = () => {
               {/* Roll Trigger Button */}
               <button
                 onClick={handleRollRoulette}
-                disabled={players.length !== 5 || isRolling}
+                disabled={players.length < 1 || isRolling}
                 className="w-full md:w-auto px-8 py-3.5 bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white font-black uppercase tracking-wider text-xs rounded-2xl shadow-xl shadow-rose-900/40 hover:shadow-rose-700/60 transition-all flex items-center justify-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               >
                 {isRolling ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Rolling 5 Unique Agents...</span>
+                    <span>Rolling {players.length} Unique Agent{players.length > 1 ? 's' : ''}...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
                     <span>
-                      {players.length === 5
+                      {players.length >= 1
                         ? Object.keys(assignments).length > 0
                           ? 'Re-roll Squad Agents'
-                          : 'Deploy Squad Roulette'
-                        : `Waiting for 5 Players (${players.length}/5)`}
+                          : `Deploy Roulette (${players.length} Player${players.length > 1 ? 's' : ''})`
+                        : 'Waiting for Players (0/5)'}
                     </span>
                   </>
                 )}

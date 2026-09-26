@@ -49,7 +49,7 @@ export const AdminShell: React.FC<AdminShellProps> = ({
     <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-red-500 selection:text-white">
       {/* Background Ambience */}
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-red-950/20 via-neutral-950 to-neutral-950 pointer-events-none" />
-      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
+      <div className="fixed inset-0 bg-[url('/noise.svg')] opacity-15 pointer-events-none mix-blend-overlay" />
 
       {/* Header Bar */}
       <header className="sticky top-0 z-40 bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-800">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CatalogSnapshot, Legend, ValorantAgent, Weapon } from '../../utils/catalogTypes';
 import { saveAgent, saveLegend, saveWeapon } from '../../utils/catalogService';
 import { resolveAssetUrl } from '../../utils/assetUrl';
@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,31 +29,46 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
   const [editingItem, setEditingItem] = useState<{ type: ItemType; item: any } | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Optimistic local catalog state for instant UI response
+  const [localCatalog, setLocalCatalog] = useState<CatalogSnapshot>(catalog);
+  const [busyItemId, setBusyItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalCatalog(catalog);
+  }, [catalog]);
+
   const showNotice = (type: 'success' | 'error', message: string) => {
     setNotice({ type, message });
-    setTimeout(() => setNotice(null), 4000);
+    setTimeout(() => setNotice(null), 5000);
   };
 
-  // Toggle Care Package on weapon directly
+  // Toggle Care Package on weapon directly with instant optimistic feedback
   const handleToggleCarePackage = async (weapon: Weapon) => {
-    try {
-      const updated: Weapon = {
-        ...weapon,
-        isCarePackage: !weapon.isCarePackage
-      };
+    const updated: Weapon = {
+      ...weapon,
+      isCarePackage: !weapon.isCarePackage
+    };
 
-      // Validate: cannot move to care package if it leaves fewer than 2 weapon types outside care packages
-      if (updated.isCarePackage) {
-        const remainingActiveOutside = catalog.apexWeapons.filter(
-          (w) => w.id !== weapon.id && w.isActive !== false && !w.isCarePackage
-        );
-        const uniqueTypes = new Set(remainingActiveOutside.map((w) => w.type));
-        if (uniqueTypes.size < 2) {
-          showNotice('error', 'Cannot move to Care Package: at least 2 distinct weapon types must remain in ground pool.');
-          return;
-        }
+    // Validate: cannot move to care package if it leaves fewer than 2 weapon types outside care packages
+    if (updated.isCarePackage) {
+      const remainingActiveOutside = localCatalog.apexWeapons.filter(
+        (w) => w.id !== weapon.id && w.isActive !== false && !w.isCarePackage
+      );
+      const uniqueTypes = new Set(remainingActiveOutside.map((w) => w.type));
+      if (uniqueTypes.size < 2) {
+        showNotice('error', 'Cannot move to Care Package: at least 2 distinct weapon types must remain in ground pool.');
+        return;
       }
+    }
 
+    // 1. Optimistic update
+    setLocalCatalog((prev) => ({
+      ...prev,
+      apexWeapons: prev.apexWeapons.map((w) => (w.id === weapon.id ? updated : w))
+    }));
+    setBusyItemId(weapon.id);
+
+    try {
       await saveWeapon(updated);
       await onRefresh();
       showNotice(
@@ -60,100 +76,140 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
         `${weapon.name} ${updated.isCarePackage ? 'moved into Care Package' : 'returned to ground loot'}!`
       );
     } catch (err: any) {
+      // Revert optimistic update
+      setLocalCatalog(catalog);
       showNotice('error', err.message || 'Failed to update weapon Care Package status.');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
   // Toggle Active on weapon
   const handleToggleActiveWeapon = async (weapon: Weapon) => {
-    try {
-      const willBeActive = !weapon.isActive;
-      if (!willBeActive && !weapon.isCarePackage) {
-        const remainingOutside = catalog.apexWeapons.filter(
-          (w) => w.id !== weapon.id && w.isActive !== false && !w.isCarePackage
-        );
-        const uniqueTypes = new Set(remainingOutside.map((w) => w.type));
-        if (uniqueTypes.size < 2) {
-          showNotice('error', 'Cannot deactivate: at least 2 distinct weapon types must remain active outside Care Package.');
-          return;
-        }
+    const willBeActive = !weapon.isActive;
+    if (!willBeActive && !weapon.isCarePackage) {
+      const remainingOutside = localCatalog.apexWeapons.filter(
+        (w) => w.id !== weapon.id && w.isActive !== false && !w.isCarePackage
+      );
+      const uniqueTypes = new Set(remainingOutside.map((w) => w.type));
+      if (uniqueTypes.size < 2) {
+        showNotice('error', 'Cannot deactivate: at least 2 distinct weapon types must remain active outside Care Package.');
+        return;
       }
+    }
 
-      await saveWeapon({ ...weapon, isActive: willBeActive });
+    const updated: Weapon = { ...weapon, isActive: willBeActive };
+    setLocalCatalog((prev) => ({
+      ...prev,
+      apexWeapons: prev.apexWeapons.map((w) => (w.id === weapon.id ? updated : w))
+    }));
+    setBusyItemId(weapon.id);
+
+    try {
+      await saveWeapon(updated);
       await onRefresh();
       showNotice('success', `${weapon.name} is now ${willBeActive ? 'active' : 'inactive'}.`);
     } catch (err: any) {
+      setLocalCatalog(catalog);
       showNotice('error', err.message || 'Failed to toggle weapon state.');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
   // Toggle Active on legend
   const handleToggleActiveLegend = async (legend: Legend) => {
-    try {
-      const willBeActive = !legend.isActive;
-      if (!willBeActive) {
-        const remaining = catalog.apexLegends.filter((l) => l.id !== legend.id && l.isActive !== false);
-        if (remaining.length < 1) {
-          showNotice('error', 'Cannot deactivate: at least 1 active Legend must remain.');
-          return;
-        }
+    const willBeActive = !legend.isActive;
+    if (!willBeActive) {
+      const remaining = localCatalog.apexLegends.filter((l) => l.id !== legend.id && l.isActive !== false);
+      if (remaining.length < 1) {
+        showNotice('error', 'Cannot deactivate: at least 1 active Legend must remain.');
+        return;
       }
+    }
 
-      await saveLegend({ ...legend, isActive: willBeActive });
+    const updated: Legend = { ...legend, isActive: willBeActive };
+    setLocalCatalog((prev) => ({
+      ...prev,
+      apexLegends: prev.apexLegends.map((l) => (l.id === legend.id ? updated : l))
+    }));
+    setBusyItemId(legend.id);
+
+    try {
+      await saveLegend(updated);
       await onRefresh();
       showNotice('success', `${legend.name} is now ${willBeActive ? 'active' : 'inactive'}.`);
     } catch (err: any) {
+      setLocalCatalog(catalog);
       showNotice('error', err.message || 'Failed to toggle legend state.');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
   // Toggle Active on agent
   const handleToggleActiveAgent = async (agent: ValorantAgent) => {
-    try {
-      const willBeActive = !agent.isActive;
-      if (!willBeActive) {
-        const remaining = catalog.valorantAgents.filter((a) => a.id !== agent.id && a.isActive !== false);
-        if (remaining.length < 5) {
-          showNotice('error', 'Cannot deactivate: at least 5 active VALORANT Agents are required for 5-player roulette.');
-          return;
-        }
+    const willBeActive = !agent.isActive;
+    if (!willBeActive) {
+      const remaining = localCatalog.valorantAgents.filter((a) => a.id !== agent.id && a.isActive !== false);
+      if (remaining.length < 1) {
+        showNotice('error', 'Cannot deactivate: at least 1 active VALORANT Agent must remain in the pool.');
+        return;
       }
+    }
 
-      await saveAgent({ ...agent, isActive: willBeActive });
+    const updated: ValorantAgent = { ...agent, isActive: willBeActive };
+    setLocalCatalog((prev) => ({
+      ...prev,
+      valorantAgents: prev.valorantAgents.map((a) => (a.id === agent.id ? updated : a))
+    }));
+    setBusyItemId(agent.id);
+
+    try {
+      await saveAgent(updated);
       await onRefresh();
       showNotice('success', `${agent.name} is now ${willBeActive ? 'active' : 'inactive'}.`);
     } catch (err: any) {
+      setLocalCatalog(catalog);
       showNotice('error', err.message || 'Failed to toggle agent state.');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
   const handleSaveItem = async (item: any) => {
-    if (editingItem?.type === 'WEAPON') {
-      await saveWeapon(item);
-    } else if (editingItem?.type === 'LEGEND') {
-      await saveLegend(item);
-    } else if (editingItem?.type === 'AGENT') {
-      await saveAgent(item);
+    try {
+      if (editingItem?.type === 'WEAPON') {
+        await saveWeapon(item);
+      } else if (editingItem?.type === 'LEGEND') {
+        await saveLegend(item);
+      } else if (editingItem?.type === 'AGENT') {
+        await saveAgent(item);
+      }
+      await onRefresh();
+      showNotice('success', `${item.name} saved successfully.`);
+      setEditingItem(null);
+    } catch (err: any) {
+      showNotice('error', err.message || 'Failed to save item.');
+      throw err;
     }
-    await onRefresh();
-    showNotice('success', `${item.name} saved successfully.`);
   };
 
-  // Filtered lists
-  const filteredWeapons = catalog.apexWeapons.filter(
+  // Filtered lists from localCatalog
+  const filteredWeapons = localCatalog.apexWeapons.filter(
     (w) =>
       w.name.toLowerCase().includes(search.toLowerCase()) ||
       w.type.toLowerCase().includes(search.toLowerCase()) ||
       w.ammo.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredLegends = catalog.apexLegends.filter(
+  const filteredLegends = localCatalog.apexLegends.filter(
     (l) =>
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       l.class.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredAgents = catalog.valorantAgents.filter(
+  const filteredAgents = localCatalog.valorantAgents.filter(
     (a) =>
       a.name.toLowerCase().includes(search.toLowerCase()) ||
       a.role.toLowerCase().includes(search.toLowerCase())
@@ -161,24 +217,33 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
 
   return (
     <div className="space-y-6">
-      {/* Notice Alert */}
+      {/* Floating Notice Toast - fixed top-20 right-6 so it stays visible during scrolling */}
       <AnimatePresence>
         {notice && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`p-4 rounded-2xl flex items-center justify-between text-xs font-bold ${
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-20 right-6 z-50 p-4 rounded-2xl flex items-center justify-between gap-4 text-xs font-bold shadow-2xl backdrop-blur-xl border max-w-md ${
               notice.type === 'success'
-                ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                : 'bg-red-500/10 border border-red-500/30 text-red-400'
+                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300 shadow-emerald-950/50'
+                : 'bg-red-950/90 border-red-500/40 text-red-300 shadow-red-950/50'
             }`}
           >
-            <div className="flex items-center gap-2">
-              {notice.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              <span>{notice.message}</span>
+            <div className="flex items-center gap-2.5">
+              {notice.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              )}
+              <span className="leading-snug">{notice.message}</span>
             </div>
-            <button onClick={() => setNotice(null)} className="opacity-70 hover:opacity-100">✕</button>
+            <button
+              onClick={() => setNotice(null)}
+              className="p-1 rounded-lg opacity-70 hover:opacity-100 hover:bg-white/10 transition-colors"
+            >
+              ✕
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -301,20 +366,26 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
               {/* Action Controls */}
               <div className="flex items-center gap-2 pt-3 border-t border-neutral-800/80">
                 <button
+                  disabled={busyItemId === w.id}
                   onClick={() => handleToggleCarePackage(w)}
-                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  className={`flex-1 py-1.5 px-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 ${
                     w.isCarePackage
                       ? 'bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30'
                       : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white'
                   }`}
                 >
-                  <Package className="w-3 h-3" />
+                  {busyItemId === w.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Package className="w-3 h-3" />
+                  )}
                   <span>{w.isCarePackage ? 'Leave Package' : 'Put In Package'}</span>
                 </button>
 
                 <button
+                  disabled={busyItemId === w.id}
                   onClick={() => handleToggleActiveWeapon(w)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 ${
                     w.isActive !== false
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
                       : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'
@@ -383,14 +454,16 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
 
               <div className="pt-3 border-t border-neutral-800">
                 <button
+                  disabled={busyItemId === leg.id}
                   onClick={() => handleToggleActiveLegend(leg)}
-                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
                     leg.isActive !== false
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
                       : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'
                   }`}
                 >
-                  {leg.isActive !== false ? 'Active in Pool' : 'Hidden from Pool'}
+                  {busyItemId === leg.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                  <span>{leg.isActive !== false ? 'Active in Pool' : 'Hidden from Pool'}</span>
                 </button>
               </div>
             </motion.div>
@@ -445,14 +518,16 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({ catalog, onRefre
 
               <div className="pt-3 border-t border-neutral-800">
                 <button
+                  disabled={busyItemId === agent.id}
                   onClick={() => handleToggleActiveAgent(agent)}
-                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  className={`w-full py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
                     agent.isActive !== false
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
                       : 'bg-neutral-800 text-neutral-500 hover:text-neutral-300'
                   }`}
                 >
-                  {agent.isActive !== false ? 'Active in Roulette' : 'Hidden from Roulette'}
+                  {busyItemId === agent.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                  <span>{agent.isActive !== false ? 'Active in Roulette' : 'Hidden from Roulette'}</span>
                 </button>
               </div>
             </motion.div>
