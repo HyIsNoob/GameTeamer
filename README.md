@@ -2,8 +2,10 @@
 
 GameTeamer is a web application that helps you generate random teams and loadouts for popular games.
 Currently supported:
-- **Apex Legends** - Random Legend + Weapon Loadout with Online Multiplayer
+- **Apex Legends** - Random Legend + Weapon Loadout with Online Multiplayer & Seasonal Care Package Pool
+- **VALORANT** - 5-Player Synchronized Online Lobby Agent Roulette
 - **Squad Assembler** - Random team generation from a player list
+- **Admin Control Center** - Protected `/admin` panel to toggle Care Package weapons, add Legends/Agents, and monitor active lobbies
 
 **Live Demo:** [https://gameteamer.vercel.app/](https://gameteamer.vercel.app/)
 
@@ -149,20 +151,23 @@ GameTeamer/
 ## Supabase Configuration
 
 1. Create a project on [Supabase](https://supabase.com).
-2. If you have an old backup, restore it into the new project first.
-3. In Supabase, open **Project Settings > API**.
-4. Copy the **Project URL** into `VITE_SUPABASE_URL`.
-5. Copy the browser-safe **Publishable key** or legacy **anon public key** into `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY`.
-6. Ensure Supabase Realtime is enabled for the project.
-7. For Vercel deployment, add the same environment variables in **Vercel Project Settings > Environment Variables**, then redeploy.
-
-This app currently uses Supabase Realtime Broadcast and Presence only. It does not read or write any Postgres tables, so there are no local migrations required for the current codebase.
+2. Follow the detailed step-by-step setup in [Supabase Setup Guide](docs/SUPABASE_SETUP.md):
+   - Run `supabase/migrations/202609260001_catalog_admin.sql` in the SQL Editor.
+   - Whitelist your admin email in `public.game_admin_allowlist`.
+   - Copy `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` into `.env.local` and Vercel.
+3. Access the admin dashboard at `/admin` to toggle Care Package weapons, add Legends/Agents, and view live active rooms.
 
 ---
 
 ## Changelog
 
-### v2.0 (Current)
+### v2.5 (Current)
+- **VALORANT 5-Player Agent Roulette** (`/valorant`): Synchronized online lobby assigning 5 unique official agents.
+- **Admin Control Center** (`/admin`): Supabase Auth + allowlist-protected CMS for live Care Package toggles, Legend additions with full-body/portrait image uploads, and Agent roster updates.
+- **Realtime Room Activity Dashboard**: Live monitor of concurrent open lobbies and connected players for Apex and VALORANT.
+- **Dynamic Seasonal Catalog**: Supabase Postgres + Storage catalog with graceful local fallback.
+
+### v2.0
 - Apex Legends Online Multiplayer support (Real-time).
 - Care Package weapon filtering.
 - Custom confirmation modal.
