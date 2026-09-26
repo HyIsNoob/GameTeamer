@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Users, Crosshair, Hexagon, Sparkles } from 'lucide-react';
+import { Users, Crosshair, Hexagon, Sparkles, Swords, Trophy } from 'lucide-react';
 
 const LandingPage: React.FC = () => {
   return (
@@ -33,7 +33,7 @@ const LandingPage: React.FC = () => {
           </div>
           <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-neutral-200 to-neutral-400 drop-shadow-xl">
             CHOOSE YOUR <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-orange-500">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-amber-500">
               TACTICAL PATH
             </span>
           </h1>
@@ -44,7 +44,7 @@ const LandingPage: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-6xl"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-7xl"
         >
           {/* Option 1: Apex Online */}
           <Link to="/apex" className="group">
@@ -74,7 +74,7 @@ const LandingPage: React.FC = () => {
             </motion.div>
           </Link>
 
-          {/* Option 2: VALORANT 5-Player Roulette */}
+          {/* Option 2: VALORANT Agent Roulette */}
           <Link to="/valorant" className="group">
             <motion.div
               whileHover={{ scale: 1.02 }}
@@ -90,9 +90,9 @@ const LandingPage: React.FC = () => {
                 <div className="w-16 h-16 bg-gradient-to-tr from-rose-600 to-red-600 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg shadow-rose-900/40 transform group-hover:rotate-6 transition-transform duration-300">
                   <Sparkles className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-3">VALORANT Roulette</h2>
+                <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-3">Agent Roulette</h2>
                 <p className="text-neutral-400 text-xs font-medium leading-relaxed max-w-xs mx-auto">
-                  5-Player online lobby roulette. Randomly assigns 5 unique official Agents at the start of your match.
+                  1-5 Player online lobby roulette. Randomly assigns unique official Agents at the start of your match.
                 </p>
               </div>
 
@@ -102,7 +102,35 @@ const LandingPage: React.FC = () => {
             </motion.div>
           </Link>
 
-          {/* Option 3: Squad Assembler */}
+          {/* Option 3: VALORANT 5v5 Custom Match & Veto */}
+          <Link to="/tournament" className="group">
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative h-96 bg-neutral-900/60 backdrop-blur-md border border-neutral-800 hover:border-amber-500/80 transition-all duration-300 rounded-3xl overflow-hidden flex flex-col items-center justify-between p-7 group-hover:shadow-[0_0_50px_-10px_rgba(245,158,11,0.4)]"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-amber-950/30 via-transparent to-neutral-950 pointer-events-none" />
+              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-100 transition-opacity duration-500">
+                <Swords className="w-24 h-24 text-amber-500 rotate-12" />
+              </div>
+
+              <div className="z-10 text-center w-full">
+                <div className="w-16 h-16 bg-gradient-to-tr from-amber-500 to-rose-600 rounded-2xl mx-auto mb-5 flex items-center justify-center shadow-lg shadow-amber-900/40 transform group-hover:rotate-6 transition-transform duration-300">
+                  <Swords className="w-8 h-8 text-black" />
+                </div>
+                <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-3">5v5 Tournament</h2>
+                <p className="text-neutral-400 text-xs font-medium leading-relaxed max-w-xs mx-auto">
+                  10-Player scrim lobby. Map veto (BO1/BO3/BO5), Captain agent bans, and team roster staging.
+                </p>
+              </div>
+
+              <div className="z-10 inline-flex items-center gap-2 text-amber-400 font-bold uppercase tracking-widest text-xs group-hover:text-amber-300">
+                Start Tournament <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </div>
+            </motion.div>
+          </Link>
+
+          {/* Option 4: Squad Assembler */}
           <Link to="/squads" className="group">
             <motion.div
               whileHover={{ scale: 1.02 }}
