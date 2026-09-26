@@ -5,17 +5,21 @@ import Home from './pages/Home';
 import ApexLegends from './pages/ApexLegends';
 import SquadAssembler from './pages/SquadAssembler';
 
+import { CatalogProvider } from './contexts/CatalogContext';
+
 const App: React.FC = () => {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/apex" element={<ApexLegends />} />
-        <Route path="/squads" element={<SquadAssembler />} />
-        {/* Redirect unknown routes to Home */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      <Analytics />
+      <CatalogProvider>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/apex" element={<ApexLegends />} />
+          <Route path="/squads" element={<SquadAssembler />} />
+          {/* Redirect unknown routes to Home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        <Analytics />
+      </CatalogProvider>
     </Router>
   );
 };
