@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from '../utils/supabase';
-import { useCatalog } from '../contexts/CatalogContext';
+import { useCatalog, FALLBACK_VALORANT_AGENTS } from '../contexts/CatalogContext';
 import { trackActiveRoom } from '../utils/roomActivity';
 import { AgentAssignment, assignAgents, generateValorantRoomId, ValorantPlayer } from '../utils/valorantLogic';
 import { AgentAssignmentCard } from '../components/valorant/AgentAssignmentCard';
@@ -46,8 +46,22 @@ const Valorant: React.FC = () => {
   const [isRolling, setIsRolling] = useState(false);
 
   const roomActivityCleanupRef = useRef<(() => Promise<void>) | null>(null);
+  const rollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assignmentsRef = useRef(assignments);
   assignmentsRef.current = assignments;
+
+  const applyRollAssignments = (newAssignments: Record<string, AgentAssignment>) => {
+    setIsRolling(true);
+    soundManager.playStart();
+    if (rollTimerRef.current) {
+      clearTimeout(rollTimerRef.current);
+    }
+    rollTimerRef.current = setTimeout(() => {
+      setAssignments(newAssignments);
+      setIsRolling(false);
+      soundManager.playSuccess();
+    }, 1200);
+  };
 
   useEffect(() => {
     soundManager.setMute(isMuted);
@@ -56,6 +70,9 @@ const Valorant: React.FC = () => {
 
   useEffect(() => {
     return () => {
+      if (rollTimerRef.current) {
+        clearTimeout(rollTimerRef.current);
+      }
       roomActivityCleanupRef.current?.();
     };
   }, []);
@@ -113,18 +130,22 @@ const Valorant: React.FC = () => {
     setMyId(tempId);
 
     const newChannel = supabase.channel(`valorant-room:${code}`, {
-      config: { presence: { key: code } }
+      config: {
+        broadcast: { self: true },
+        presence: { key: code }
+      }
     });
 
     newChannel
       .on('broadcast', { event: 'VALORANT_ROLL' }, (payload) => {
-        setIsRolling(true);
-        soundManager.playStart();
-        setTimeout(() => {
-          setAssignments(payload.payload.assignments || {});
-          setIsRolling(false);
-          soundManager.playSuccess();
-        }, 1200);
+        const rollPayload = payload.payload;
+        // If this client already triggered roll locally, skip double animation
+        if (rollPayload?.senderId && rollPayload.senderId === tempId) {
+          return;
+        }
+        if (rollPayload?.assignments) {
+          applyRollAssignments(rollPayload.assignments);
+        }
       })
       .on('broadcast', { event: 'ROOM_STATE_REQUEST' }, () => {
         if (Object.keys(assignmentsRef.current).length > 0) {
@@ -247,7 +268,19 @@ const Valorant: React.FC = () => {
     }
 
     try {
-      const activeAgents = catalog.valorantAgents.filter((a) => a.isActive !== false);
+      const activeAgents =
+        catalog.valorantAgents && catalog.valorantAgents.length > 0
+          ? catalog.valorantAgents.filter((a) => a.isActive !== false)
+          : FALLBACK_VALORANT_AGENTS;
+
+      if (activeAgents.length < players.length) {
+        setNotification({
+          type: 'error',
+          message: `Need at least ${players.length} active agents (found ${activeAgents.length}).`
+        });
+        return;
+      }
+
       const assignedList = assignAgents(players, activeAgents);
 
       const assignmentMap: Record<string, AgentAssignment> = {};
@@ -255,22 +288,33 @@ const Valorant: React.FC = () => {
         assignmentMap[item.playerId] = item;
       });
 
-      // Broadcast to room
-      await channel?.send({
-        type: 'broadcast',
-        event: 'VALORANT_ROLL',
-        payload: {
-          rollId: crypto.randomUUID(),
-          assignments: assignmentMap,
-          timestamp: Date.now()
-        }
-      });
+      // 1. Immediately trigger roll animation and assign locally
+      applyRollAssignments(assignmentMap);
+
+      // 2. Broadcast to room for other players
+      if (channel) {
+        await channel.send({
+          type: 'broadcast',
+          event: 'VALORANT_ROLL',
+          payload: {
+            rollId: crypto.randomUUID(),
+            senderId: myId,
+            assignments: assignmentMap,
+            timestamp: Date.now()
+          }
+        });
+      }
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message || 'Failed to roll agents.' });
     }
   };
 
   const handleLeaveRoom = async () => {
+    if (channel) {
+      try {
+        await channel.send({ type: 'broadcast', event: 'ROOM_CLOSED', payload: {} });
+      } catch (_) {}
+    }
     if (roomActivityCleanupRef.current) {
       await roomActivityCleanupRef.current();
       roomActivityCleanupRef.current = null;
