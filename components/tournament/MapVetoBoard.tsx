@@ -17,6 +17,7 @@ interface MapVetoBoardProps {
   state: TournamentState;
   myTeam: TournamentTeam;
   isCaptain: boolean;
+  isHost?: boolean;
   onAction: (action: { team: TournamentTeam; type: VetoActionType; targetMapId?: string; side?: VetoSide }) => void;
 }
 
@@ -24,11 +25,14 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
   state,
   myTeam,
   isCaptain,
+  isHost = false,
   onAction
 }) => {
-  const steps = generateVetoSteps(state.settings, state.settings.enabledMapIds);
+  const steps = generateVetoSteps(state.settings, state.settings.enabledMapIds, state.firstPickTeam || 'ALPHA');
   const currentStep = steps[state.currentVetoStepIndex];
-  const isMyTurn = isCaptain && currentStep && currentStep.team === myTeam;
+  const isTeamTurn = Boolean(currentStep && currentStep.team === myTeam);
+  // User can act if it is their team's turn, or if they are room Host (allows testing or admin bypass)
+  const isMyTurn = Boolean(currentStep && (isTeamTurn || isHost));
 
   // Selected map state for side choice
   const [sideChoiceModal, setSideChoiceModal] = useState<boolean>(false);
@@ -39,15 +43,18 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
     if (!isMyTurn || !currentStep) return;
 
     if (currentStep.type === 'BAN') {
-      onAction({ team: myTeam, type: 'BAN', targetMapId: mapId });
+      soundManager.playBanSlam();
+      onAction({ team: currentStep.team, type: 'BAN', targetMapId: mapId });
     } else if (currentStep.type === 'PICK') {
-      onAction({ team: myTeam, type: 'PICK', targetMapId: mapId });
+      soundManager.playLockIn();
+      onAction({ team: currentStep.team, type: 'PICK', targetMapId: mapId });
     }
   };
 
   const handleSideChoice = (side: VetoSide) => {
     if (!isMyTurn || currentStep?.type !== 'SIDE') return;
-    onAction({ team: myTeam, type: 'SIDE', side });
+    soundManager.playLockIn();
+    onAction({ team: currentStep.team, type: 'SIDE', side });
     setSideChoiceModal(false);
   };
 
@@ -85,7 +92,7 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
                 {state.settings.mode === 'VETO' ? 'Turn-based Veto' : 'Random Roll'})
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 font-mono">
-                Step {Math.min(state.currentVetoStepIndex + 1, steps.length)}/{steps.length}
+                Bước {Math.min(state.currentVetoStepIndex + 1, steps.length)}/{steps.length}
               </span>
             </div>
             <h2 className="text-lg font-black uppercase tracking-tight text-white mt-0.5">
@@ -99,15 +106,19 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
           {isMyTurn ? (
             <div className="px-5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 font-black uppercase text-xs tracking-wider flex items-center gap-2 animate-pulse shadow-lg shadow-amber-950/40">
               <Sparkles className="w-4 h-4" />
-              <span>YOUR TURN (Captain of Team {myTeam})</span>
+              <span>
+                {isTeamTurn
+                  ? `LƯỢT CỦA BẠN (Team ${myTeam})`
+                  : `HOST ADMIN (Cấm hộ Team ${currentStep?.team})`}
+              </span>
             </div>
           ) : currentStep ? (
             <div className="px-5 py-2.5 rounded-2xl bg-neutral-950 border border-neutral-800 text-neutral-400 font-bold uppercase text-xs tracking-wider">
-              Waiting for Team {currentStep.team} Captain...
+              Đang chờ Team {currentStep.team} cấm / chọn...
             </div>
           ) : (
             <div className="px-5 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold uppercase text-xs tracking-wider">
-              Veto Phase Complete
+              Hoàn tất giai đoạn Veto
             </div>
           )}
         </div>
@@ -168,7 +179,7 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
               whileHover={canInteract ? { scale: 1.02 } : {}}
               className={`relative rounded-3xl overflow-hidden border transition-all min-h-[220px] flex flex-col justify-between p-5 ${
                 isBanned
-                  ? 'bg-neutral-950 border-neutral-900 opacity-40 grayscale'
+                  ? 'bg-neutral-950 border-neutral-900 opacity-50 grayscale'
                   : decidedRecord
                   ? 'bg-neutral-900 border-amber-500/60 shadow-xl shadow-amber-950/30 ring-1 ring-amber-500/40'
                   : canInteract
@@ -177,6 +188,19 @@ export const MapVetoBoard: React.FC<MapVetoBoardProps> = ({
               }`}
               onClick={() => canInteract && handleMapClick(map.id)}
             >
+              {/* Animated BANNED Stamp Overlay */}
+              {isBanned && (
+                <motion.div
+                  initial={{ scale: 2.5, rotate: -25, opacity: 0 }}
+                  animate={{ scale: 1, rotate: -12, opacity: 1 }}
+                  transition={{ type: 'spring', damping: 12, stiffness: 220 }}
+                  className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none"
+                >
+                  <div className="px-5 py-2 border-4 border-rose-600 text-rose-500 font-black text-2xl uppercase tracking-widest rounded-2xl bg-black/85 rotate-[-12deg] shadow-[0_0_30px_rgba(244,63,94,0.8)] backdrop-blur-sm">
+                    BANNED
+                  </div>
+                </motion.div>
+              )}
               {/* Background Map Artwork */}
               <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <img

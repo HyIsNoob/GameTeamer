@@ -120,6 +120,108 @@ class SoundManager {
         osc.start();
         osc.stop(this.ctx.currentTime + 0.1);
     }
+
+    playCoinToss() {
+        if (this.isMuted || !this.ctx || !this.masterGain) return;
+        this.ensureContext();
+
+        // Rapid metallic ringing clicks
+        for (let i = 0; i < 8; i++) {
+            const start = this.ctx.currentTime + (i * 0.08);
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.frequency.setValueAtTime(1800 + (i * 60), start);
+            osc.type = 'triangle';
+
+            gain.gain.setValueAtTime(0.08, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.06);
+
+            osc.start(start);
+            osc.stop(start + 0.06);
+        }
+    }
+
+    playBanSlam() {
+        if (this.isMuted || !this.ctx || !this.masterGain) return;
+        this.ensureContext();
+
+        // Deep heavy impact bass drop + harsh buzz
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(35, this.ctx.currentTime + 0.35);
+
+        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.4);
+    }
+
+    playLockIn() {
+        if (this.isMuted || !this.ctx || !this.masterGain) return;
+        this.ensureContext();
+
+        // Cyber lock-in chord
+        [523.25, 659.25, 1046.5].forEach((freq, idx) => {
+            const start = this.ctx!.currentTime + (idx * 0.04);
+            const osc = this.ctx!.createOscillator();
+            const gain = this.ctx!.createGain();
+
+            osc.connect(gain);
+            gain.connect(this.masterGain!);
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, start);
+
+            gain.gain.setValueAtTime(0.12, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
+
+            osc.start(start);
+            osc.stop(start + 0.3);
+        });
+    }
+
+    playVictory() {
+        if (this.isMuted || !this.ctx || !this.masterGain) return;
+        this.ensureContext();
+
+        // Grand esports championship fanfare
+        const notes = [
+            { freq: 523.25, time: 0, dur: 0.2 },      // C5
+            { freq: 659.25, time: 0.18, dur: 0.2 },   // E5
+            { freq: 783.99, time: 0.36, dur: 0.25 },  // G5
+            { freq: 1046.5, time: 0.58, dur: 0.8 },   // C6 long
+            { freq: 1318.5, time: 0.62, dur: 0.75 }   // E6 harmonic
+        ];
+
+        notes.forEach((n) => {
+            const start = this.ctx!.currentTime + n.time;
+            const osc = this.ctx!.createOscillator();
+            const gain = this.ctx!.createGain();
+
+            osc.connect(gain);
+            gain.connect(this.masterGain!);
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(n.freq, start);
+
+            gain.gain.setValueAtTime(0.2, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + n.dur);
+
+            osc.start(start);
+            osc.stop(start + n.dur);
+        });
+    }
 }
 
 export const soundManager = new SoundManager();

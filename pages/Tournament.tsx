@@ -17,13 +17,16 @@ import {
 import {
   executeVetoAction,
   executeAgentBan,
-  randomizeTournamentMaps
+  randomizeTournamentMaps,
+  recordMapScore
 } from '../utils/tournamentLogic';
 import { TournamentRosterView } from '../components/tournament/TournamentRosterView';
 import { MapVetoBoard } from '../components/tournament/MapVetoBoard';
 import { AgentBanBoard } from '../components/tournament/AgentBanBoard';
 import { TournamentSettingsModal } from '../components/tournament/TournamentSettingsModal';
 import { MatchSummaryModal } from '../components/tournament/MatchSummaryModal';
+import { CoinFlipModal } from '../components/tournament/CoinFlipModal';
+import { VictoryScreen } from '../components/tournament/VictoryScreen';
 import {
   ArrowLeft,
   Settings2,
@@ -238,6 +241,14 @@ const Tournament: React.FC = () => {
           }
         });
 
+        // Ensure each team has at least one captain if there are players in that team
+        if (alphaList.length > 0 && !alphaList.some((p) => p.isCaptain)) {
+          alphaList[0].isCaptain = true;
+        }
+        if (omegaList.length > 0 && !omegaList.some((p) => p.isCaptain)) {
+          omegaList[0].isCaptain = true;
+        }
+
         const mapped = [...alphaList, ...omegaList];
         setPlayers(mapped);
       })
@@ -313,11 +324,14 @@ const Tournament: React.FC = () => {
     const joinTime = sessionStorage.getItem(joinKey) || new Date().toISOString();
     const instanceId = sessionStorage.getItem(`tourney_instance_${roomId}`) || crypto.randomUUID();
 
+    const otherPlayersInTargetTeam = players.filter((p) => p.team === targetTeam && p.id !== myId);
+    const willBeCaptain = otherPlayersInTargetTeam.length === 0;
+
     await channel.track({
       user_name: playerName.trim(),
       userId: myId,
       team: targetTeam,
-      isCaptain: false,
+      isCaptain: willBeCaptain,
       online_at: joinTime,
       roomInstanceId: instanceId
     });
@@ -347,6 +361,19 @@ const Tournament: React.FC = () => {
   };
 
   const handleStartVeto = () => {
+    soundManager.playStart();
+    const coinWinner: TournamentTeam = Math.random() > 0.5 ? 'ALPHA' : 'OMEGA';
+    const newState: TournamentState = {
+      ...tournamentState,
+      phase: 'COIN_FLIP',
+      firstPickTeam: coinWinner,
+      timestamp: Date.now()
+    };
+    broadcastStateUpdate(newState);
+  };
+
+  const handleCoinFlipComplete = () => {
+    const firstTeam = tournamentState.firstPickTeam || 'ALPHA';
     if (tournamentState.settings.mode === 'RANDOM') {
       soundManager.playStart();
       const randomMaps = randomizeTournamentMaps(
@@ -355,11 +382,14 @@ const Tournament: React.FC = () => {
       );
 
       const nextPhase = tournamentState.settings.bansPerTeam > 0 ? 'AGENT_BAN' : 'MATCH_READY';
+      // Fair rule: Team that would ban map first has opponent ban agent first!
+      const nextAgentBanTeam: TournamentTeam = firstTeam === 'ALPHA' ? 'OMEGA' : 'ALPHA';
+
       const newState: TournamentState = {
         ...tournamentState,
         phase: nextPhase,
         decidedMaps: randomMaps,
-        currentAgentBanTeam: nextPhase === 'AGENT_BAN' ? 'ALPHA' : null,
+        currentAgentBanTeam: nextPhase === 'AGENT_BAN' ? nextAgentBanTeam : null,
         timestamp: Date.now()
       };
       broadcastStateUpdate(newState);
@@ -373,6 +403,27 @@ const Tournament: React.FC = () => {
       };
       broadcastStateUpdate(newState);
     }
+  };
+
+  const handleRecordScore = (mapId: string, alphaScore: number, omegaScore: number) => {
+    try {
+      soundManager.playLockIn();
+      const updatedState = recordMapScore(tournamentState, mapId, alphaScore, omegaScore);
+      broadcastStateUpdate(updatedState);
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Lỗi lưu điểm.' });
+    }
+  };
+
+  const handleDeclareWinner = (winner: TournamentTeam) => {
+    soundManager.playVictory();
+    const updatedState: TournamentState = {
+      ...tournamentState,
+      phase: 'VICTORY',
+      matchWinner: winner,
+      timestamp: Date.now()
+    };
+    broadcastStateUpdate(updatedState);
   };
 
   const handleVetoAction = (action: {
@@ -391,12 +442,21 @@ const Tournament: React.FC = () => {
   };
 
   const handleAgentBanAction = (agentId: string, agentName: string) => {
-    if (!myPlayer?.isCaptain && myPlayer?.id !== myCaptainOfCurrentTurn?.id) {
-      setNotification({ type: 'error', message: 'Only team captains can ban agents.' });
-      return;
-    }
     const currentTeam = tournamentState.currentAgentBanTeam;
     if (!currentTeam) return;
+
+    const isAuthorized = Boolean(
+      isHost ||
+      myPlayer?.team === currentTeam ||
+      myPlayer?.isCaptain
+    );
+    if (!isAuthorized) {
+      setNotification({
+        type: 'error',
+        message: `Chỉ thành viên Team ${currentTeam} (hoặc Host) mới có quyền cấm tướng.`
+      });
+      return;
+    }
 
     try {
       soundManager.playStart();
@@ -713,6 +773,7 @@ const Tournament: React.FC = () => {
                   state={tournamentState}
                   myTeam={myPlayer?.team || 'ALPHA'}
                   isCaptain={Boolean(myPlayer?.isCaptain)}
+                  isHost={isHost}
                   onAction={handleVetoAction}
                 />
                 <TournamentRosterView
@@ -733,6 +794,7 @@ const Tournament: React.FC = () => {
                   state={tournamentState}
                   myTeam={myPlayer?.team || 'ALPHA'}
                   isCaptain={Boolean(myPlayer?.isCaptain)}
+                  isHost={isHost}
                   onBanAgent={handleAgentBanAction}
                 />
                 <TournamentRosterView
@@ -754,6 +816,28 @@ const Tournament: React.FC = () => {
                   players={players}
                   isHost={isHost}
                   onResetMatch={handleResetMatch}
+                  onRecordScore={handleRecordScore}
+                  onDeclareWinner={handleDeclareWinner}
+                />
+                <TournamentRosterView
+                  players={players}
+                  myId={myId}
+                  isHost={isHost}
+                  phase={tournamentState.phase}
+                  onSwitchTeam={handleSwitchTeam}
+                  onSetCaptain={handleSetCaptain}
+                />
+              </div>
+            )}
+
+            {/* Victory / Champions Screen */}
+            {tournamentState.phase === 'VICTORY' && (
+              <div className="space-y-8">
+                <VictoryScreen
+                  state={tournamentState}
+                  players={players}
+                  isHost={isHost}
+                  onRematch={handleResetMatch}
                 />
                 <TournamentRosterView
                   players={players}
@@ -768,6 +852,14 @@ const Tournament: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Coin Flip Modal */}
+      <CoinFlipModal
+        isOpen={tournamentState.phase === 'COIN_FLIP'}
+        winnerTeam={tournamentState.firstPickTeam || 'ALPHA'}
+        isHost={isHost}
+        onComplete={handleCoinFlipComplete}
+      />
 
       {/* Settings Modal */}
       <TournamentSettingsModal

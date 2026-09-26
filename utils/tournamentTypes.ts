@@ -69,19 +69,30 @@ export interface TournamentSettings {
   enabledMapIds: string[];
 }
 
-export type TournamentPhase = 'LOBBY' | 'MAP_VETO' | 'AGENT_BAN' | 'MATCH_READY';
+export type TournamentPhase = 'LOBBY' | 'COIN_FLIP' | 'MAP_VETO' | 'AGENT_BAN' | 'MATCH_READY' | 'VICTORY';
+
+export interface MapScore {
+  mapId: string;
+  orderIndex: number;
+  alphaScore: number;
+  omegaScore: number;
+  winner?: TournamentTeam;
+}
 
 export interface TournamentState {
   roomId: string;
   hostId: string;
   settings: TournamentSettings;
   phase: TournamentPhase;
+  firstPickTeam: TournamentTeam;
   bannedMapIds: string[];
   bannedMapHistory: Array<{ mapId: string; team: TournamentTeam; stepIndex: number }>;
   decidedMaps: DecidedMap[];
   currentVetoStepIndex: number;
   agentBans: AgentBan[];
   currentAgentBanTeam: TournamentTeam | null;
+  mapScores: MapScore[];
+  matchWinner: TournamentTeam | null;
   timestamp: number;
 }
 
@@ -97,11 +108,14 @@ export const createInitialTournamentState = (roomId: string, hostId: string): To
   hostId,
   settings: { ...DEFAULT_TOURNAMENT_SETTINGS },
   phase: 'LOBBY',
+  firstPickTeam: 'ALPHA',
   bannedMapIds: [],
   bannedMapHistory: [],
   decidedMaps: [],
   currentVetoStepIndex: 0,
   agentBans: [],
   currentAgentBanTeam: null,
+  mapScores: [],
+  matchWinner: null,
   timestamp: Date.now()
 });

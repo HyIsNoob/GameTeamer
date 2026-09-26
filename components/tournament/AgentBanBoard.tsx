@@ -10,6 +10,7 @@ interface AgentBanBoardProps {
   state: TournamentState;
   myTeam: TournamentTeam;
   isCaptain: boolean;
+  isHost?: boolean;
   onBanAgent: (agentId: string, agentName: string) => void;
 }
 
@@ -17,13 +18,15 @@ export const AgentBanBoard: React.FC<AgentBanBoardProps> = ({
   state,
   myTeam,
   isCaptain,
+  isHost = false,
   onBanAgent
 }) => {
   const [selectedRole, setSelectedRole] = useState<string>('ALL');
   const [pendingAgent, setPendingAgent] = useState<ValorantAgent | null>(null);
 
   const currentTurnTeam = state.currentAgentBanTeam;
-  const isMyTurn = isCaptain && currentTurnTeam === myTeam;
+  const isTeamTurn = Boolean(currentTurnTeam && currentTurnTeam === myTeam);
+  const isMyTurn = Boolean(currentTurnTeam && (isTeamTurn || isHost));
 
   const totalBansTarget = state.settings.bansPerTeam * 2;
   const alphaBans = state.agentBans.filter((b) => b.bannedBy === 'ALPHA');
@@ -42,6 +45,7 @@ export const AgentBanBoard: React.FC<AgentBanBoardProps> = ({
 
   const handleConfirmBan = () => {
     if (!pendingAgent || !isMyTurn) return;
+    soundManager.playBanSlam();
     onBanAgent(pendingAgent.id, pendingAgent.name);
     setPendingAgent(null);
   };
@@ -63,16 +67,16 @@ export const AgentBanBoard: React.FC<AgentBanBoardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono uppercase tracking-wider text-neutral-400">
-                Agent Ban Phase ({state.settings.bansPerTeam} per team)
+                Giai đoạn cấm Tướng ({state.settings.bansPerTeam} tướng mỗi đội)
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 font-mono">
-                {state.agentBans.length}/{totalBansTarget} Bans Locked
+                {state.agentBans.length}/{totalBansTarget} tướng đã cấm
               </span>
             </div>
             <h2 className="text-lg font-black uppercase tracking-tight text-white mt-0.5">
               {currentTurnTeam
-                ? `Team ${currentTurnTeam} Captain: Ban an Agent`
-                : 'Agent Bans Completed!'}
+                ? `Team ${currentTurnTeam}: Chọn tướng để cấm`
+                : 'Đã hoàn tất cấm tướng!'}
             </h2>
           </div>
         </div>
@@ -82,15 +86,19 @@ export const AgentBanBoard: React.FC<AgentBanBoardProps> = ({
           {isMyTurn ? (
             <div className="px-5 py-2.5 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-300 font-black uppercase text-xs tracking-wider flex items-center gap-2 animate-pulse shadow-lg shadow-rose-950/40">
               <Sparkles className="w-4 h-4" />
-              <span>YOUR TURN TO BAN (Team {myTeam})</span>
+              <span>
+                {isTeamTurn
+                  ? `LƯỢT BẠN CẤM TƯỚNG (Team ${myTeam})`
+                  : `HOST ADMIN (Cấm hộ Team ${currentTurnTeam})`}
+              </span>
             </div>
           ) : currentTurnTeam ? (
             <div className="px-5 py-2.5 rounded-2xl bg-neutral-950 border border-neutral-800 text-neutral-400 font-bold uppercase text-xs tracking-wider">
-              Waiting for Team {currentTurnTeam} Captain...
+              Đang chờ Team {currentTurnTeam} cấm tướng...
             </div>
           ) : (
             <div className="px-5 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold uppercase text-xs tracking-wider">
-              Ready for Match
+              Sẵn sàng thi đấu
             </div>
           )}
         </div>
@@ -194,9 +202,16 @@ export const AgentBanBoard: React.FC<AgentBanBoardProps> = ({
                   }}
                 />
                 {isBanned && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Ban className="w-12 h-12 text-rose-500 opacity-80" />
-                  </div>
+                  <motion.div
+                    initial={{ scale: 2.2, rotate: -25, opacity: 0 }}
+                    animate={{ scale: 1, rotate: -12, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 12, stiffness: 220 }}
+                    className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+                  >
+                    <div className="px-2.5 py-1 border-2 border-rose-600 text-rose-500 font-black text-xs uppercase tracking-widest rounded-lg bg-black/90 rotate-[-12deg] shadow-[0_0_20px_rgba(244,63,94,0.8)] backdrop-blur-sm">
+                      BANNED
+                    </div>
+                  </motion.div>
                 )}
               </div>
 

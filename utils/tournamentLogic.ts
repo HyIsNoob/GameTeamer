@@ -17,15 +17,17 @@ import { VALORANT_MAP_POOL } from './tournamentTypes.ts';
  */
 export const generateVetoSteps = (
   settings: TournamentSettings,
-  enabledMapIds: string[] = settings.enabledMapIds
+  enabledMapIds: string[] = settings.enabledMapIds,
+  firstTeam: TournamentTeam = 'ALPHA'
 ): VetoStep[] => {
   const steps: VetoStep[] = [];
   const mapCount = enabledMapIds.length;
   let stepIndex = 0;
+  const secondTeam: TournamentTeam = firstTeam === 'ALPHA' ? 'OMEGA' : 'ALPHA';
 
   if (settings.format === 'BO1') {
-    // Alternate bans until 1 map remains, then Omega picks starting side
-    let currentTeam: TournamentTeam = 'ALPHA';
+    // Alternate bans until 1 map remains, then secondTeam picks starting side
+    let currentTeam: TournamentTeam = firstTeam;
     const totalBansNeeded = Math.max(0, mapCount - 1);
 
     for (let i = 0; i < totalBansNeeded; i++) {
@@ -38,33 +40,27 @@ export const generateVetoSteps = (
       currentTeam = currentTeam === 'ALPHA' ? 'OMEGA' : 'ALPHA';
     }
 
-    // Side selection for the remaining decider map by Omega
+    // Side selection for the remaining decider map by the second team
     steps.push({
       stepIndex: stepIndex++,
-      team: 'OMEGA',
+      team: secondTeam,
       type: 'SIDE',
-      description: 'Team OMEGA selects starting side for Decider Map'
+      description: `Team ${secondTeam} selects starting side for Decider Map`
     });
   } else if (settings.format === 'BO3') {
-    // Standard esports BO3 veto:
-    // 1. Alpha Ban
-    // 2. Omega Ban
-    // 3. Alpha Pick Map 1 -> Omega Side Map 1
-    // 4. Omega Pick Map 2 -> Alpha Side Map 2
-    // 5. Alpha Ban, Omega Ban ... until 1 decider remains
-    // 6. Alpha Side Decider Map
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'BAN', description: 'Team ALPHA bans a map' });
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'BAN', description: 'Team OMEGA bans a map' });
+    // Standard esports BO3 veto with firstTeam advantage
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'BAN', description: `Team ${firstTeam} bans a map` });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'BAN', description: `Team ${secondTeam} bans a map` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'PICK', description: 'Team ALPHA picks Map 1' });
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'SIDE', description: 'Team OMEGA selects starting side for Map 1' });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'PICK', description: `Team ${firstTeam} picks Map 1` });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'SIDE', description: `Team ${secondTeam} selects starting side for Map 1` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'PICK', description: 'Team OMEGA picks Map 2' });
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'SIDE', description: 'Team ALPHA selects starting side for Map 2' });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'PICK', description: `Team ${secondTeam} picks Map 2` });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'SIDE', description: `Team ${firstTeam} selects starting side for Map 2` });
 
     // Remaining maps banned until 1 decider remains
     let remainingToDecide = mapCount - 4; // 2 banned + 2 picked
-    let banTeam: TournamentTeam = 'ALPHA';
+    let banTeam: TournamentTeam = firstTeam;
     while (remainingToDecide > 1) {
       steps.push({
         stepIndex: stepIndex++,
@@ -79,34 +75,28 @@ export const generateVetoSteps = (
     // Side selection for decider
     steps.push({
       stepIndex: stepIndex++,
-      team: 'ALPHA',
+      team: firstTeam,
       type: 'SIDE',
-      description: 'Team ALPHA selects starting side for Decider Map 3'
+      description: `Team ${firstTeam} selects starting side for Decider Map 3`
     });
   } else {
-    // BO5:
-    // Alpha Ban, Omega Ban
-    // Alpha Pick Map 1 -> Omega Side
-    // Omega Pick Map 2 -> Alpha Side
-    // Alpha Pick Map 3 -> Omega Side
-    // Omega Pick Map 4 -> Alpha Side
-    // Decider Map 5 -> Alpha Side
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'BAN', description: 'Team ALPHA bans a map' });
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'BAN', description: 'Team OMEGA bans a map' });
+    // BO5
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'BAN', description: `Team ${firstTeam} bans a map` });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'BAN', description: `Team ${secondTeam} bans a map` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'PICK', description: 'Team ALPHA picks Map 1' });
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'SIDE', description: 'Team OMEGA selects side for Map 1' });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'PICK', description: `Team ${firstTeam} picks Map 1` });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'SIDE', description: `Team ${secondTeam} selects side for Map 1` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'PICK', description: 'Team OMEGA picks Map 2' });
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'SIDE', description: 'Team ALPHA selects side for Map 2' });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'PICK', description: `Team ${secondTeam} picks Map 2` });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'SIDE', description: `Team ${firstTeam} selects side for Map 2` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'PICK', description: 'Team ALPHA picks Map 3' });
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'SIDE', description: 'Team OMEGA selects side for Map 3' });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'PICK', description: `Team ${firstTeam} picks Map 3` });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'SIDE', description: `Team ${secondTeam} selects side for Map 3` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'OMEGA', type: 'PICK', description: 'Team OMEGA picks Map 4' });
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'SIDE', description: 'Team ALPHA selects side for Map 4' });
+    steps.push({ stepIndex: stepIndex++, team: secondTeam, type: 'PICK', description: `Team ${secondTeam} picks Map 4` });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'SIDE', description: `Team ${firstTeam} selects side for Map 4` });
 
-    steps.push({ stepIndex: stepIndex++, team: 'ALPHA', type: 'SIDE', description: 'Team ALPHA selects side for Decider Map 5' });
+    steps.push({ stepIndex: stepIndex++, team: firstTeam, type: 'SIDE', description: `Team ${firstTeam} selects side for Decider Map 5` });
   }
 
   return steps;
@@ -157,7 +147,7 @@ export const executeVetoAction = (
     side?: VetoSide;
   }
 ): TournamentState => {
-  const steps = generateVetoSteps(state.settings, state.settings.enabledMapIds);
+  const steps = generateVetoSteps(state.settings, state.settings.enabledMapIds, state.firstPickTeam || 'ALPHA');
   const currentStep = steps[state.currentVetoStepIndex];
 
   if (!currentStep) {
@@ -251,7 +241,8 @@ export const executeVetoAction = (
   if (newState.currentVetoStepIndex >= steps.length) {
     if (newState.settings.bansPerTeam > 0) {
       newState.phase = 'AGENT_BAN';
-      newState.currentAgentBanTeam = 'ALPHA';
+      // Fair rule: Team who banned map first gets agent banned by opponent first!
+      newState.currentAgentBanTeam = newState.firstPickTeam === 'ALPHA' ? 'OMEGA' : 'ALPHA';
     } else {
       newState.phase = 'MATCH_READY';
       newState.currentAgentBanTeam = null;
@@ -259,6 +250,62 @@ export const executeVetoAction = (
   }
 
   return newState;
+};
+
+/**
+ * Records a game score for a decided map and checks for series victory.
+ */
+export const recordMapScore = (
+  state: TournamentState,
+  mapId: string,
+  alphaScore: number,
+  omegaScore: number
+): TournamentState => {
+  const mapIndex = state.decidedMaps.findIndex((m) => m.mapId === mapId);
+  if (mapIndex === -1) throw new Error('Map not found in decided maps.');
+
+  const winner: TournamentTeam = alphaScore > omegaScore ? 'ALPHA' : 'OMEGA';
+  const existingScoreIndex = state.mapScores.findIndex((s) => s.mapId === mapId);
+
+  const updatedScores = [...state.mapScores];
+  const newScore = {
+    mapId,
+    orderIndex: mapIndex + 1,
+    alphaScore,
+    omegaScore,
+    winner
+  };
+
+  if (existingScoreIndex >= 0) {
+    updatedScores[existingScoreIndex] = newScore;
+  } else {
+    updatedScores.push(newScore);
+  }
+
+  // Count wins
+  const alphaWins = updatedScores.filter((s) => s.winner === 'ALPHA').length;
+  const omegaWins = updatedScores.filter((s) => s.winner === 'OMEGA').length;
+
+  const winsNeeded = state.settings.format === 'BO1' ? 1 : state.settings.format === 'BO3' ? 2 : 3;
+
+  let matchWinner: TournamentTeam | null = null;
+  let phase = state.phase;
+
+  if (alphaWins >= winsNeeded) {
+    matchWinner = 'ALPHA';
+    phase = 'VICTORY';
+  } else if (omegaWins >= winsNeeded) {
+    matchWinner = 'OMEGA';
+    phase = 'VICTORY';
+  }
+
+  return {
+    ...state,
+    mapScores: updatedScores,
+    matchWinner,
+    phase,
+    timestamp: Date.now()
+  };
 };
 
 /**

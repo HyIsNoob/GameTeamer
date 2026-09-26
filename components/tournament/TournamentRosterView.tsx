@@ -69,7 +69,7 @@ export const TournamentRosterView: React.FC<TournamentRosterViewProps> = ({
             </div>
 
             {/* Switch to this team button */}
-            {phase === 'LOBBY' && myTeam !== team && teamPlayers.length < 5 && (
+            {(phase === 'LOBBY' || phase === 'MAP_VETO' || phase === 'AGENT_BAN') && myTeam !== team && teamPlayers.length < 5 && (
               <button
                 onClick={() => onSwitchTeam(team)}
                 className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
@@ -79,7 +79,7 @@ export const TournamentRosterView: React.FC<TournamentRosterViewProps> = ({
                 }`}
               >
                 <ArrowRightLeft className="w-3 h-3" />
-                <span>Join {isAlpha ? 'Alpha' : 'Omega'}</span>
+                <span>Vào {isAlpha ? 'Team Alpha' : 'Team Omega'}</span>
               </button>
             )}
           </div>
