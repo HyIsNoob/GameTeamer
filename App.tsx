@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import ApexLegends from './pages/ApexLegends';
 import SquadAssembler from './pages/SquadAssembler';
 import Admin from './pages/Admin';
+import Valorant from './pages/Valorant';
 
 import { CatalogProvider } from './contexts/CatalogContext';
 
@@ -15,6 +16,7 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/apex" element={<ApexLegends />} />
+          <Route path="/valorant" element={<Valorant />} />
           <Route path="/squads" element={<SquadAssembler />} />
           <Route path="/admin" element={<Admin />} />
           {/* Redirect unknown routes to Home */}
