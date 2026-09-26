@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loadout } from '../../utils/apexLogic';
 import { soundManager } from '../../utils/soundManager';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 
 interface LegendCardProps {
   playerIndex: number;
@@ -162,7 +163,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                         <div className="w-36 h-40 bg-gradient-to-b from-gray-700 to-black rounded-3xl shadow-2xl flex items-center justify-center mb-2 mx-auto relative overflow-hidden ring-4 ring-black/40 group">
                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-transparent opacity-50" />
                            <img 
-                              src={loadout?.legend?.image ? `/legends/${loadout.legend.image}` : `/legends/${loadout?.legend?.id}.png`}
+                              src={resolveAssetUrl(loadout?.legend?.image || `${loadout?.legend?.id}.png`, 'legends')}
                               alt={loadout?.legend?.name || ''}
                               className="w-[110%] h-[110%] object-cover object-top transition-transform duration-500 group-hover:scale-105"
                               onError={(e) => {
@@ -210,7 +211,7 @@ const LegendCard: React.FC<LegendCardProps> = ({
                           className="bg-gray-900/80 p-3 rounded-xl flex flex-col items-center border border-gray-700 shadow-xl relative overflow-hidden group hover:border-gray-500 transition-colors"
                        >
                           <img 
-                              src={w?.image ? `/weapons/${w.image}` : `/weapons/${w?.id || ''}.png`}
+                              src={resolveAssetUrl(w?.image || `${w?.id || ''}.png`, 'weapons')}
                               alt={w?.name}
                               className="w-28 h-14 object-contain mb-1 z-10 drop-shadow-md group-hover:scale-110 transition-transform"
                               onError={(e) => e.currentTarget.style.display = 'none'}

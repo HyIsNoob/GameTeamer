@@ -1,19 +1,5 @@
-export interface Legend {
-  id: string;
-  name: string;
-  class: 'Assault' | 'Skirmisher' | 'Recon' | 'Support' | 'Controller';
-  icon?: string;
-  image?: string;
-}
-
-export interface Weapon {
-  id: string;
-  name: string;
-  type: 'Assault Rifle' | 'SMG' | 'LMG' | 'Marksman' | 'Sniper' | 'Shotgun' | 'Pistol';
-  ammo: 'Energy' | 'Heavy' | 'Light' | 'Sniper' | 'Shotgun' | 'Arrows' | 'Mythic';
-  image?: string;
-  isCarePackage?: boolean;
-}
+import { Legend, Weapon } from './catalogTypes';
+export type { Legend, Weapon };
 
 export const APEX_LEGENDS: Legend[] = [
   // Assault

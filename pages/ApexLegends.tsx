@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from '../utils/supabase';
 import { getRandomLoadout, Loadout } from '../utils/apexLogic';
 import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
+import { useCatalog } from '../contexts/CatalogContext';
+import { resolveAssetUrl } from '../utils/assetUrl';
 import { soundManager } from '../utils/soundManager';
 import LegendCard from '../components/apex/LegendCard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,6 +77,10 @@ interface HistoryItem {
 const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
 const ApexLegends: React.FC = () => {
+  const { catalog, loading: isCatalogLoading, refresh: refreshCatalog } = useCatalog();
+  const activeLegends = catalog.apexLegends.filter(l => l.isActive !== false);
+  const activeWeapons = catalog.apexWeapons.filter(w => w.isActive !== false);
+
   // --- Setup State ---
   const [setupMode, setSetupMode] = useState<'JOIN' | 'CREATE'>('CREATE');
   const [showPoolModal, setShowPoolModal] = useState(false);
@@ -386,17 +392,17 @@ const handleIndividualReroll = (userId: string) => {
 
     let newLoadout;
     if (gameState.mode === 'GUNS') {
-         const fullLoadout = getRandomLoadout([], []);
+         const fullLoadout = getRandomLoadout(catalog, [], []);
          newLoadout = { 
             legend: gameState.loadouts[player.id]?.legend || undefined,
             primary: fullLoadout.primary,
             secondary: fullLoadout.secondary
          };
     } else if (gameState.mode === 'LEGENDS') {
-         const fullLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
+         const fullLoadout = getRandomLoadout(catalog, unavailableLegends, playerExcludes);
          newLoadout = { legend: fullLoadout.legend };
     } else {
-         newLoadout = getRandomLoadout(unavailableLegends, playerExcludes);
+         newLoadout = getRandomLoadout(catalog, unavailableLegends, playerExcludes);
     }
     
 
@@ -480,7 +486,7 @@ const handleIndividualReroll = (userId: string) => {
                     // If we want to strictly 'reroll guns', we can try to preserve the legend if it exists in state
                     // But usually global reroll clears state? The user said "không random tướng".
                     // So we probably just generate random guns.
-                    const fullLoadout = getRandomLoadout([], []);
+                    const fullLoadout = getRandomLoadout(catalog, [], []);
                     loadout = { 
                        legend: gameState.loadouts[p.id]?.legend || undefined, // Keep existing if any? Or maybe just don't set it.
                        primary: fullLoadout.primary,
@@ -489,7 +495,7 @@ const handleIndividualReroll = (userId: string) => {
                  } else {
                      // Check bans only if picking legends
                      const unavailable = getUnavailableLegendsForSlot(p.id, tempLoadouts, gameState.bans);
-                     const fullLoadout = getRandomLoadout(unavailable, p.excludedLegends || []);
+                     const fullLoadout = getRandomLoadout(catalog, unavailable, p.excludedLegends || []);
                      
                      if (gameState.mode === 'LEGENDS') {
                          loadout = { legend: fullLoadout.legend };
@@ -527,7 +533,7 @@ const handleIndividualReroll = (userId: string) => {
      const unavailableLegends = getUnavailableLegendsForSlot(player.id, gameState.loadouts, newState.bans);
      const playerExcludes = player.excludedLegends || [];
      
-     newState.loadouts[player.id] = getRandomLoadout(unavailableLegends, playerExcludes);
+     newState.loadouts[player.id] = getRandomLoadout(catalog, unavailableLegends, playerExcludes);
 
      updateGameState(newState, true);
      channel?.send({ type: 'broadcast', event: 'GAME_UPDATE', payload: newState });
@@ -624,7 +630,7 @@ const handleIndividualReroll = (userId: string) => {
            >
              <span>Config Owned Legends</span>
              <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-[10px]">
-               {APEX_LEGENDS.length - myExcludes.length} Available
+               {Math.max(0, activeLegends.length - myExcludes.length)} Available
              </span>
            </button>
 
@@ -709,7 +715,7 @@ const handleIndividualReroll = (userId: string) => {
                              <div className="h-px bg-gray-800 flex-1" />
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                             {APEX_LEGENDS.filter(l => l.class === role).map(leg => {
+                             {activeLegends.filter(l => l.class === role).map(leg => {
                                 const isExcluded = myExcludes.includes(leg.id);
                                 return (
                                   <motion.button 
@@ -731,8 +737,8 @@ const handleIndividualReroll = (userId: string) => {
                                      }`} />
                                      
                                      <img 
-                                        src={leg.icon ? `/icons/${leg.icon}` : (leg.image ? `/legends/${leg.image}` : `/legends/${leg.id}.png`)} 
-                                        className="w-10 h-10 bg-black/50 rounded-md"
+                                        src={resolveAssetUrl(leg.icon, 'icons') || resolveAssetUrl(leg.image, 'legends') || resolveAssetUrl(`${leg.id}.png`, 'legends')} 
+                                        className="w-10 h-10 bg-black/50 rounded-md object-cover"
                                         onError={(e) => e.currentTarget.style.display = 'none'}
                                      />
                                      <span className="font-bold text-xs uppercase truncate">{leg.name}</span>
