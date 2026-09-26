@@ -5,6 +5,7 @@ import { getRandomLoadout, Loadout } from '../utils/apexLogic';
 import { APEX_LEGENDS, APEX_WEAPONS } from '../utils/apexData';
 import { useCatalog } from '../contexts/CatalogContext';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import { trackActiveRoom } from '../utils/roomActivity';
 import { soundManager } from '../utils/soundManager';
 import LegendCard from '../components/apex/LegendCard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -137,6 +138,14 @@ const ApexLegends: React.FC = () => {
          setHasUnreadChat(false);
      }
   }, [chatMessages, showChat]);
+
+  const roomActivityCleanupRef = React.useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      roomActivityCleanupRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
      soundManager.setMute(isMuted);
@@ -292,6 +301,10 @@ const ApexLegends: React.FC = () => {
            setMatchResults([]);
       })
       .on('broadcast', { event: 'ROOM_CLOSED' }, () => {
+        if (roomActivityCleanupRef.current) {
+          roomActivityCleanupRef.current();
+          roomActivityCleanupRef.current = null;
+        }
         newChannel.unsubscribe();
         setNotification({ message: "Squad leader disbanded the lobby.", type: 'info' });
         setTimeout(() => window.location.reload(), 2000);
@@ -350,7 +363,23 @@ const ApexLegends: React.FC = () => {
              excluded_ids: myExcludes
            });
            
-           
+           // Track anonymous session in global active rooms directory
+           let instanceId = sessionStorage.getItem(`apex_instance_${code}`);
+           if (!instanceId) {
+             instanceId = crypto.randomUUID();
+             sessionStorage.setItem(`apex_instance_${code}`, instanceId);
+           }
+
+           if (roomActivityCleanupRef.current) {
+             await roomActivityCleanupRef.current();
+           }
+           const activityCleanup = await trackActiveRoom({
+             game: 'APEX',
+             roomInstanceId: instanceId,
+             sessionId: tempId
+           });
+           roomActivityCleanupRef.current = activityCleanup;
+
            setView('LOBBY');
            setIsProcessing(false);
         } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -459,9 +488,17 @@ const handleIndividualReroll = (userId: string) => {
       setConfirmModalData(null);
       
       if (type === 'DISBAND') {
+          if (roomActivityCleanupRef.current) {
+              roomActivityCleanupRef.current();
+              roomActivityCleanupRef.current = null;
+          }
           channel?.send({ type: 'broadcast', event: 'ROOM_CLOSED', payload: {} });
           window.location.reload();
       } else if (type === 'LEAVE') {
+          if (roomActivityCleanupRef.current) {
+              roomActivityCleanupRef.current();
+              roomActivityCleanupRef.current = null;
+          }
           if (channel) {
              channel.unsubscribe();
              setChannel(null);
