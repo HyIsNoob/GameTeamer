@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "download-assets": "node scripts/download_assets.js"
+    "download-assets": "node scripts/download_assets.js",
+    "download-valorant-assets": "node scripts/download_valorant_assets.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",
