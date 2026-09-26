@@ -6,7 +6,7 @@ import { getFallbackCatalog, useCatalog } from '../contexts/CatalogContext';
 import { AdminLogin } from '../components/admin/AdminLogin';
 import { AdminShell } from '../components/admin/AdminShell';
 import { ActiveRoomsDashboard } from '../components/admin/ActiveRoomsDashboard';
-import { ShieldX, Loader2, AlertCircle, LogOut } from 'lucide-react';
+import { ShieldX, Loader2, AlertCircle, LogOut, RefreshCw, Copy, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const Admin: React.FC = () => {
@@ -174,12 +174,14 @@ const Admin: React.FC = () => {
   }
 
   if (!isAdmin) {
+    const grantSql = `insert into public.game_admin_allowlist (email) values ('${userEmail || 'khanghyomni@gmail.com'}') on conflict (email) do nothing;`;
+
     return (
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-4 shadow-2xl"
+          className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-5 shadow-2xl"
         >
           <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 flex items-center justify-center mx-auto">
             <ShieldX className="w-8 h-8" />
@@ -188,13 +190,40 @@ const Admin: React.FC = () => {
           <p className="text-xs text-neutral-400 leading-relaxed">
             The account <strong className="text-white font-mono">{userEmail}</strong> is authenticated, but is not authorized in the server allowlist (<code className="text-red-400">game_admin_allowlist</code>).
           </p>
-          <div className="pt-4">
+
+          {/* Quick SQL Helper */}
+          <div className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 text-left space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase font-bold text-neutral-400 tracking-wider">
+                Run this in Supabase SQL Editor:
+              </span>
+              <button
+                onClick={() => navigator.clipboard.writeText(grantSql)}
+                className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded-md transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                <span>Copy</span>
+              </button>
+            </div>
+            <pre className="text-xs font-mono text-red-300 bg-neutral-900 p-3 rounded-xl overflow-x-auto select-all border border-neutral-800/80 leading-relaxed whitespace-pre-wrap break-all">
+              {grantSql}
+            </pre>
+          </div>
+
+          <div className="pt-2 flex items-center gap-3">
+            <button
+              onClick={() => checkAuth()}
+              className="flex-1 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Re-check Permission</span>
+            </button>
             <button
               onClick={async () => {
                 await supabase.auth.signOut();
                 checkAuth();
               }}
-              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+              className="py-3 px-5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
             >
               <LogOut className="w-4 h-4" />
               <span>Sign Out</span>
