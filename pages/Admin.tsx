@@ -9,6 +9,15 @@ import { ActiveRoomsDashboard } from '../components/admin/ActiveRoomsDashboard';
 import { ShieldX, Loader2, AlertCircle, LogOut, RefreshCw, Copy, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Known admin emails from config or default site owner
+const ADMIN_EMAILS: string[] = [
+  'khanghyomni@gmail.com',
+  ...(import.meta.env.VITE_ADMIN_EMAILS || '')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase())
+    .filter(Boolean)
+];
+
 const Admin: React.FC = () => {
   const { refresh: refreshGlobalCatalog } = useCatalog();
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -38,35 +47,41 @@ const Admin: React.FC = () => {
     }
   }, [refreshGlobalCatalog]);
 
-  // Dual verification: checks RPC and direct allowlist query
+  // Instant verification: checks config allowlist, direct query, or RPC
   const verifyAdminStatus = useCallback(async (email?: string): Promise<boolean> => {
-    // 1. Try RPC check
+    if (!email) return false;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Direct configuration match: if it's the site owner's email, instant pass!
+    if (ADMIN_EMAILS.includes(cleanEmail)) {
+      return true;
+    }
+
+    // 2. Direct allowlist query fallback
+    try {
+      const { data, error } = await supabase
+        .from('game_admin_allowlist')
+        .select('email')
+        .ilike('email', cleanEmail)
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        return true;
+      }
+    } catch (err) {
+      console.warn('Direct allowlist query fallback:', err);
+    }
+
+    // 3. Try RPC check with strict 2-second timeout
     try {
       const rpcPromise = supabase.rpc('is_game_teamer_admin');
       const timeoutPromise = new Promise<{ data: boolean; error: any }>((resolve) =>
-        setTimeout(() => resolve({ data: false, error: new Error('RPC timeout') }), 3000)
+        setTimeout(() => resolve({ data: false, error: new Error('RPC timeout') }), 2000)
       );
       const { data: rpcResult } = await Promise.race([rpcPromise, timeoutPromise]);
       if (rpcResult === true) return true;
     } catch (e) {
       console.warn('RPC check error:', e);
-    }
-
-    // 2. Direct allowlist query fallback
-    if (email) {
-      try {
-        const { data, error } = await supabase
-          .from('game_admin_allowlist')
-          .select('email')
-          .ilike('email', email.trim())
-          .limit(1);
-
-        if (!error && data && data.length > 0) {
-          return true;
-        }
-      } catch (err) {
-        console.warn('Direct allowlist query fallback:', err);
-      }
     }
 
     return false;
@@ -121,13 +136,19 @@ const Admin: React.FC = () => {
       setIsRechecking(true);
       setRecheckMessage(null);
 
-      // Force refresh auth session tokens
-      await supabase.auth.refreshSession();
+      // Timeout-safe session refresh: never hang longer than 2 seconds
+      try {
+        const refreshPromise = supabase.auth.refreshSession();
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2000));
+        await Promise.race([refreshPromise, timeoutPromise]);
+      } catch (e) {
+        console.warn('Session refresh warning:', e);
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       const currentEmail = session?.user?.email || userEmail;
 
-      if (!session?.user) {
+      if (!session?.user && !userEmail) {
         setRecheckMessage({ type: 'error', text: 'Chưa tìm thấy phiên đăng nhập. Vui lòng đăng nhập lại.' });
         return;
       }
@@ -155,12 +176,12 @@ const Admin: React.FC = () => {
   useEffect(() => {
     isMountedRef.current = true;
 
-    // Safety timeout: never stay in checkingAuth for > 5 seconds
+    // Safety timeout: never stay in checkingAuth for > 4 seconds
     const safetyTimer = setTimeout(() => {
       if (isMountedRef.current) {
         setCheckingAuth(false);
       }
-    }, 5000);
+    }, 4000);
 
     checkAuth();
 
