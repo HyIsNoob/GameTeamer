@@ -6,8 +6,8 @@ import { getFallbackCatalog, useCatalog } from '../contexts/CatalogContext';
 import { AdminLogin } from '../components/admin/AdminLogin';
 import { AdminShell } from '../components/admin/AdminShell';
 import { ActiveRoomsDashboard } from '../components/admin/ActiveRoomsDashboard';
-import { ShieldX, Loader2, AlertCircle, LogOut, RefreshCw, Copy, Check } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ShieldX, Loader2, AlertCircle, LogOut, RefreshCw, Copy, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Admin: React.FC = () => {
   const { refresh: refreshGlobalCatalog } = useCatalog();
@@ -16,6 +16,11 @@ const Admin: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [adminCatalog, setAdminCatalog] = useState<CatalogSnapshot>(getFallbackCatalog());
+
+  // Manual recheck state
+  const [isRechecking, setIsRechecking] = useState(false);
+  const [recheckMessage, setRecheckMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   // Prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -27,14 +32,47 @@ const Admin: React.FC = () => {
       if (isMountedRef.current) {
         setAdminCatalog(data);
       }
-      // Silently refresh global catalog without blocking
       refreshGlobalCatalog().catch(() => {});
     } catch (err) {
       console.warn('Failed to load admin catalog:', err);
     }
   }, [refreshGlobalCatalog]);
 
-  // Check auth and admin privileges without blocking the screen
+  // Dual verification: checks RPC and direct allowlist query
+  const verifyAdminStatus = useCallback(async (email?: string): Promise<boolean> => {
+    // 1. Try RPC check
+    try {
+      const rpcPromise = supabase.rpc('is_game_teamer_admin');
+      const timeoutPromise = new Promise<{ data: boolean; error: any }>((resolve) =>
+        setTimeout(() => resolve({ data: false, error: new Error('RPC timeout') }), 3000)
+      );
+      const { data: rpcResult } = await Promise.race([rpcPromise, timeoutPromise]);
+      if (rpcResult === true) return true;
+    } catch (e) {
+      console.warn('RPC check error:', e);
+    }
+
+    // 2. Direct allowlist query fallback
+    if (email) {
+      try {
+        const { data, error } = await supabase
+          .from('game_admin_allowlist')
+          .select('email')
+          .ilike('email', email.trim())
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          return true;
+        }
+      } catch (err) {
+        console.warn('Direct allowlist query fallback:', err);
+      }
+    }
+
+    return false;
+  }, []);
+
+  // Check auth and admin privileges
   const checkAuth = useCallback(async () => {
     if (!isSupabaseConfigured) {
       if (isMountedRef.current) setCheckingAuth(false);
@@ -49,29 +87,15 @@ const Admin: React.FC = () => {
         setIsAuthenticated(true);
         setUserEmail(session.user.email);
 
-        // Check admin role with a 4-second timeout race
-        try {
-          const rpcPromise = supabase.rpc('is_game_teamer_admin');
-          const timeoutPromise = new Promise<{ data: boolean; error: any }>((resolve) =>
-            setTimeout(() => resolve({ data: false, error: new Error('RPC timeout') }), 4000)
-          );
-          const { data: adminRpc } = await Promise.race([rpcPromise, timeoutPromise]);
-          const adminPassed = Boolean(adminRpc);
+        const adminPassed = await verifyAdminStatus(session.user.email);
 
-          if (isMountedRef.current) {
-            setIsAdmin(adminPassed);
-            setCheckingAuth(false); // Unblock screen immediately!
-          }
+        if (isMountedRef.current) {
+          setIsAdmin(adminPassed);
+          setCheckingAuth(false);
+        }
 
-          if (adminPassed) {
-            fetchAdminCatalog();
-          }
-        } catch (rpcErr) {
-          console.warn('Admin check error:', rpcErr);
-          if (isMountedRef.current) {
-            setIsAdmin(false);
-            setCheckingAuth(false);
-          }
+        if (adminPassed) {
+          fetchAdminCatalog();
         }
       } else {
         if (isMountedRef.current) {
@@ -89,12 +113,49 @@ const Admin: React.FC = () => {
         setCheckingAuth(false);
       }
     }
-  }, [fetchAdminCatalog]);
+  }, [fetchAdminCatalog, verifyAdminStatus]);
+
+  // Handle manual "Re-check Permission" click with live feedback
+  const handleManualRecheck = async () => {
+    try {
+      setIsRechecking(true);
+      setRecheckMessage(null);
+
+      // Force refresh auth session tokens
+      await supabase.auth.refreshSession();
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentEmail = session?.user?.email || userEmail;
+
+      if (!session?.user) {
+        setRecheckMessage({ type: 'error', text: 'Chưa tìm thấy phiên đăng nhập. Vui lòng đăng nhập lại.' });
+        return;
+      }
+
+      const isPermitted = await verifyAdminStatus(currentEmail);
+      console.log('Manual recheck for', currentEmail, '->', isPermitted);
+
+      if (isPermitted) {
+        setRecheckMessage({ type: 'success', text: 'Xác nhận quyền Admin thành công! Đang chuyển hướng...' });
+        setIsAdmin(true);
+        fetchAdminCatalog();
+      } else {
+        setRecheckMessage({
+          type: 'error',
+          text: `Chưa tìm thấy email ${currentEmail} trong allowlist. Vui lòng chạy đoạn SQL bên dưới trong Supabase SQL Editor.`
+        });
+      }
+    } catch (err: any) {
+      setRecheckMessage({ type: 'error', text: err.message || 'Lỗi khi kiểm tra quyền.' });
+    } finally {
+      setIsRechecking(false);
+    }
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
 
-    // Safety timeout: never stay in checkingAuth for > 5 seconds under any circumstance
+    // Safety timeout: never stay in checkingAuth for > 5 seconds
     const safetyTimer = setTimeout(() => {
       if (isMountedRef.current) {
         setCheckingAuth(false);
@@ -109,20 +170,13 @@ const Admin: React.FC = () => {
       if (session?.user) {
         setIsAuthenticated(true);
         setUserEmail(session.user.email);
-        try {
-          const { data } = await supabase.rpc('is_game_teamer_admin');
-          if (isMountedRef.current) {
-            setIsAdmin(Boolean(data));
-            setCheckingAuth(false);
-          }
-          if (data) {
-            fetchAdminCatalog();
-          }
-        } catch {
-          if (isMountedRef.current) {
-            setIsAdmin(false);
-            setCheckingAuth(false);
-          }
+        const adminPassed = await verifyAdminStatus(session.user.email);
+        if (isMountedRef.current) {
+          setIsAdmin(adminPassed);
+          setCheckingAuth(false);
+        }
+        if (adminPassed) {
+          fetchAdminCatalog();
         }
       } else {
         if (isMountedRef.current) {
@@ -139,7 +193,7 @@ const Admin: React.FC = () => {
       clearTimeout(safetyTimer);
       authListener.subscription.unsubscribe();
     };
-  }, [checkAuth, fetchAdminCatalog]);
+  }, [checkAuth, fetchAdminCatalog, verifyAdminStatus]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -174,14 +228,15 @@ const Admin: React.FC = () => {
   }
 
   if (!isAdmin) {
-    const grantSql = `insert into public.game_admin_allowlist (email) values ('${userEmail || 'khanghyomni@gmail.com'}') on conflict (email) do nothing;`;
+    const targetEmail = userEmail || 'khanghyomni@gmail.com';
+    const grantSql = `-- 1. Add email to allowlist\ninsert into public.game_admin_allowlist (email)\nvalues ('${targetEmail}')\non conflict (email) do nothing;\n\n-- 2. Ensure allowlist readable by authenticated users\nalter table public.game_admin_allowlist enable row level security;\ndrop policy if exists "Allow authenticated read game_admin_allowlist" on public.game_admin_allowlist;\ncreate policy "Allow authenticated read game_admin_allowlist"\n  on public.game_admin_allowlist for select\n  to authenticated\n  using (true);\n\n-- 3. Update admin check function to reliably check both auth.users and auth.jwt\ncreate or replace function public.is_game_teamer_admin()\nreturns boolean\nlanguage plpgsql\nsecurity definer\nset search_path = public, auth, pg_catalog\nas $$\ndeclare\n  curr_email text;\nbegin\n  begin\n    curr_email := lower(nullif(auth.jwt() ->> 'email', ''));\n  exception when others then\n    curr_email := null;\n  end;\n\n  if curr_email is null and auth.uid() is not null then\n    select lower(email) into curr_email from auth.users where id = auth.uid();\n  end if;\n\n  if curr_email is null then\n    return false;\n  end if;\n\n  return exists (\n    select 1 from public.game_admin_allowlist\n    where lower(trim(email)) = lower(trim(curr_email))\n  );\nend;\n$$;\n\ngrant execute on function public.is_game_teamer_admin() to anon, authenticated;`;
 
     return (
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-5 shadow-2xl"
+          className="max-w-xl w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-5 shadow-2xl"
         >
           <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 flex items-center justify-center mx-auto">
             <ShieldX className="w-8 h-8" />
@@ -191,6 +246,29 @@ const Admin: React.FC = () => {
             The account <strong className="text-white font-mono">{userEmail}</strong> is authenticated, but is not authorized in the server allowlist (<code className="text-red-400">game_admin_allowlist</code>).
           </p>
 
+          {/* Feedback Notice */}
+          <AnimatePresence>
+            {recheckMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className={`p-3.5 rounded-xl text-xs font-bold flex items-start gap-2.5 text-left ${
+                  recheckMessage.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border border-red-500/30 text-red-400'
+                }`}
+              >
+                {recheckMessage.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                )}
+                <span>{recheckMessage.text}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Quick SQL Helper */}
           <div className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 text-left space-y-2">
             <div className="flex items-center justify-between">
@@ -198,25 +276,39 @@ const Admin: React.FC = () => {
                 Run this in Supabase SQL Editor:
               </span>
               <button
-                onClick={() => navigator.clipboard.writeText(grantSql)}
-                className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded-md transition-colors"
+                onClick={() => {
+                  navigator.clipboard.writeText(grantSql);
+                  setCopiedSql(true);
+                  setTimeout(() => setCopiedSql(false), 2000);
+                }}
+                className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1 rounded-md transition-colors"
               >
                 <Copy className="w-3 h-3" />
-                <span>Copy</span>
+                <span>{copiedSql ? 'Copied!' : 'Copy SQL'}</span>
               </button>
             </div>
-            <pre className="text-xs font-mono text-red-300 bg-neutral-900 p-3 rounded-xl overflow-x-auto select-all border border-neutral-800/80 leading-relaxed whitespace-pre-wrap break-all">
+            <pre className="text-[11px] font-mono text-red-300 bg-neutral-900 p-3 rounded-xl overflow-x-auto select-all border border-neutral-800/80 leading-relaxed max-h-48 whitespace-pre">
               {grantSql}
             </pre>
           </div>
 
           <div className="pt-2 flex items-center gap-3">
             <button
-              onClick={() => checkAuth()}
-              className="flex-1 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 transition-all"
+              onClick={handleManualRecheck}
+              disabled={isRechecking}
+              className="flex-1 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 transition-all disabled:opacity-50"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Re-check Permission</span>
+              {isRechecking ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Checking Database...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Re-check Permission</span>
+                </>
+              )}
             </button>
             <button
               onClick={async () => {
